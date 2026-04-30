@@ -239,7 +239,12 @@
                                 <goals><goal>jpackage</goal></goals>
                                 <configuration>
                                     <name>IntelliMailbox</name>
-                                    <appVersion>${project.version}</appVersion>
+                                    <!-- macOS quirk: CFBundleShortVersionString rejects a leading-zero
+                                         version (0.1.0 → "first number cannot be zero or negative"),
+                                         so the .dmg gets its own appVersion. The actual jar still
+                                         carries pom.xml's ${project.version}. Bump this in lockstep
+                                         when the pom hits 1.0.0+ — at that point both can share. -->
+                                    <appVersion>1.0.0</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
                                     <description>AI-preprocessed inbox · local-by-default</description>
