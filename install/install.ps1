@@ -26,7 +26,7 @@ $MODEL         = 'qwen2.5:3b'
 # website to keep URLs short / brand-aligned. Override IM_JAR_URL to install
 # from a local build during development.
 $JAR_URL = if ($env:IM_JAR_URL) { $env:IM_JAR_URL } else {
-    "https://github.com/intelliswarm/intelli-mailbox/releases/download/v$VERSION/intelli-mailbox-$VERSION.jar"
+    "https://github.com/intelliswarm-ai/intelli-mailbox/releases/download/v$VERSION/intelli-mailbox-$VERSION.jar"
 }
 
 function Write-Step($msg)    { Write-Host "  → $msg" -ForegroundColor Cyan }

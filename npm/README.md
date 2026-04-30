@@ -54,5 +54,5 @@ Nothing leaves your laptop unless you explicitly switch the active Spring profil
 ## Links
 
 * [Product page](https://intelliswarm.ai/products/intelli-mailbox)
-* [Source / issues](https://github.com/intelliswarm/intelli-mailbox)
+* [Source / issues](https://github.com/intelliswarm-ai/intelli-mailbox)
 * [License — Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0)

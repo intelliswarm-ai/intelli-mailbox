@@ -24,7 +24,7 @@ VERSION="0.1.0"
 INSTALL_DIR="${INTELLIMAILBOX_DIR:-$HOME/.intelliswarm/intelli-mailbox}"
 MODEL="qwen2.5:3b"
 # Override IM_JAR_URL during local development to install from a private build.
-JAR_URL="${IM_JAR_URL:-https://github.com/intelliswarm/intelli-mailbox/releases/download/v${VERSION}/intelli-mailbox-${VERSION}.jar}"
+JAR_URL="${IM_JAR_URL:-https://github.com/intelliswarm-ai/intelli-mailbox/releases/download/v${VERSION}/intelli-mailbox-${VERSION}.jar}"
 
 # ---- ANSI helpers (skip colour if not a TTY) ------------------------------
 if [ -t 1 ]; then

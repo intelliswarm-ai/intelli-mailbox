@@ -13,14 +13,14 @@ Plus the website (`intelliswarm.ai/products/intelli-mailbox`) hosts the install 
 
 ### 1. Push the repo to GitHub
 
-The repo expects to live at **`github.com/intelliswarm/intelli-mailbox`**. The install scripts and the npm package both hardcode that URL.
+The repo expects to live at **`github.com/intelliswarm-ai/intelli-mailbox`**. The install scripts and the npm package both hardcode that URL.
 
 ```bash
 cd D:\Intelliswarm.ai\intelli-mailbox
 git init -b main
 git add .
 git commit -m "init"
-git remote add origin git@github.com:intelliswarm/intelli-mailbox.git
+git remote add origin git@github.com:intelliswarm-ai/intelli-mailbox.git
 git push -u origin main
 ```
 
@@ -106,11 +106,11 @@ After a successful workflow run:
 
 ```bash
 # 1. GitHub Release exists with both assets
-gh release view v0.2.0 -R intelliswarm/intelli-mailbox
+gh release view v0.2.0 -R intelliswarm-ai/intelli-mailbox
 
 # 2. JAR is downloadable and matches its sha256
-curl -fsSL -o /tmp/im.jar       https://github.com/intelliswarm/intelli-mailbox/releases/download/v0.2.0/intelli-mailbox-0.2.0.jar
-curl -fsSL                       https://github.com/intelliswarm/intelli-mailbox/releases/download/v0.2.0/intelli-mailbox-0.2.0.jar.sha256
+curl -fsSL -o /tmp/im.jar       https://github.com/intelliswarm-ai/intelli-mailbox/releases/download/v0.2.0/intelli-mailbox-0.2.0.jar
+curl -fsSL                       https://github.com/intelliswarm-ai/intelli-mailbox/releases/download/v0.2.0/intelli-mailbox-0.2.0.jar.sha256
 sha256sum /tmp/im.jar           # → should match the .sha256 file content
 
 # 3. npm package is on the registry
@@ -130,7 +130,7 @@ npm install -g intelli-mailbox      # should land you on http://localhost:8090/
 ## Pieces of the system, at a glance
 
 ```
-intelli-mailbox/                      ← THIS REPO (push to github.com/intelliswarm/intelli-mailbox)
+intelli-mailbox/                      ← THIS REPO (push to github.com/intelliswarm-ai/intelli-mailbox)
 ├── pom.xml                           version is the release source of truth
 ├── src/main/...                      Java app
 ├── install/                          canonical install scripts

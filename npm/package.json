@@ -16,10 +16,10 @@
   "homepage": "https://intelliswarm.ai/products/intelli-mailbox",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/intelliswarm/intelli-mailbox.git"
+    "url": "git+https://github.com/intelliswarm-ai/intelli-mailbox.git"
   },
   "bugs": {
-    "url": "https://github.com/intelliswarm/intelli-mailbox/issues"
+    "url": "https://github.com/intelliswarm-ai/intelli-mailbox/issues"
   },
   "license": "Apache-2.0",
   "author": "IntelliSwarm.AI <hello@intelliswarm.ai>",
