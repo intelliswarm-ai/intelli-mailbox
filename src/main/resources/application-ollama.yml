@@ -6,21 +6,39 @@
 # ============================================================================
 spring:
   autoconfigure:
+    # NOTE: this list REPLACES the base application.yml list (Spring Boot doesn't merge
+    # list-typed properties across profiles). Keep the vector-store + JPA excludes here too.
     exclude:
+      # Suppress OpenAI + Anthropic starters — only Ollama active in this profile.
+      # (Anthropic starter is brought in transitively by swarmai; if its ChatModel
+      # bean stays alive, ChatClientBuilder sees two ChatModels and fails.)
       - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration
+      # swarmai-tools transitively pulls Chroma + PgVector starters; both register a
+      # bean named "vectorStore" → BeanDefinitionOverrideException at startup.
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.chroma.autoconfigure.ChromaVectorStoreAutoConfiguration
+      # JPA + DataSource: no entities, no datasource — Hibernate's empty-metamodel error.
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
   ai:
     ollama:
       base-url: ${SPRING_AI_OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         options:
-          model: ${SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL:mistral:7b}
+          # qwen2.5:3b — 2 GB, fast on CPU, very strong on structured-JSON output
+          # which is exactly what EnrichmentService needs (Task.outputType auto-parsed).
+          # Override with SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL=<your-model>
+          # e.g. mistral:latest (sharper, slower) or llama3.2:3b (similar speed, looser).
+          model: ${SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL:qwen2.5:3b}
           temperature: 0.1
 
 swarmai:
   workflow:
-    model: ${SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL:mistral:7b}
+    model: ${SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL:qwen2.5:3b}

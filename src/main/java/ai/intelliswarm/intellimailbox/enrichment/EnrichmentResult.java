@@ -23,4 +23,11 @@ public class EnrichmentResult {
 
     /** True iff the email looks like a phishing attempt (case still flagged in badges as RISK). */
     public Boolean phishingSuspected;
+
+    /**
+     * True iff this email genuinely warrants a reply from the recipient.
+     * Newsletters, automated alerts, digests, and read-only FYI mail must be {@code false}
+     * — the pipeline skips draft generation entirely for those (saves an LLM round-trip).
+     */
+    public Boolean needsReply;
 }

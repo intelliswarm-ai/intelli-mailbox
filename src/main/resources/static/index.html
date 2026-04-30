@@ -262,6 +262,55 @@
 
     .latency { font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono); }
 
+    /* ---- Reply drafts ----------------------------------------- */
+    .reply-drafts {
+      margin-top: 4px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .reply-drafts-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      background: var(--accent-dim);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .reply-drafts-header .label {
+      font-size: 0.72rem; font-weight: 600; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .draft-tabs { display: inline-flex; gap: 0; margin-left: auto; }
+    .draft-tab {
+      all: unset; cursor: pointer;
+      padding: 3px 12px; font-size: 0.75rem; font-weight: 500;
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+      transition: color 0.15s, background 0.15s;
+    }
+    .draft-tab:first-child { border-radius: 6px 0 0 6px; }
+    .draft-tab:last-child  { border-radius: 0 6px 6px 0; }
+    .draft-tab + .draft-tab { border-left: 0; }
+    .draft-tab[aria-selected="true"] { background: var(--accent); color: #ffffff; border-color: var(--accent); }
+    .draft-tab:hover:not([aria-selected="true"]) { color: var(--text-primary); }
+
+    .draft-body {
+      padding: 12px 14px;
+      font-size: 0.9rem; line-height: 1.55; color: var(--text-primary);
+      white-space: pre-wrap; word-wrap: break-word;
+      background: transparent;
+      font-family: var(--font-sans);
+      margin: 0;
+    }
+    .draft-actions { padding: 8px 12px; border-top: 1px solid var(--border-subtle); display: flex; gap: 8px; }
+    .draft-copy {
+      all: unset; cursor: pointer;
+      padding: 4px 12px; font-size: 0.72rem; font-weight: 500;
+      color: var(--accent); border: 1px solid var(--accent); border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .draft-copy:hover { background: var(--accent); color: #ffffff; }
+    .draft-copy.copied { background: var(--color-success); color: #ffffff; border-color: var(--color-success); }
+
     /* ---- Loading state per row --------------------------------- */
     .processing { color: var(--text-muted); font-size: 0.85rem; display: flex; gap: 8px; align-items: center; }
     .spinner {
@@ -343,12 +392,34 @@ function applyTheme(name) {
 
 // -------- App state -------------------------------------------------
 const ALL_BADGES = ['MEETING','RISK','EXTERNAL','AUTOMATED','VIP','FOLLOW_UP','NEWSLETTER','FINANCE'];
+const FILTER_KEY = 'intellimailbox-filter';
 const state = {
   items: [],                    // InboxItem[]
   enriched: {},                 // id → EnrichedEmail
-  filter: null,                 // active badge filter, or null
+  // Filter persists across hard-refresh via localStorage. Server cache + SSE replay
+  // restore items+enrichments on its own — this just keeps the user's chosen view.
+  filter: (() => { try { return localStorage.getItem(FILTER_KEY) || null; } catch (e) { return null; } })(),
   sse: null,                    // EventSource
+  hasReceivedReplay: false,     // first SSE event arrives after page load
 };
+
+function persistFilter() {
+  try {
+    if (state.filter) localStorage.setItem(FILTER_KEY, state.filter);
+    else localStorage.removeItem(FILTER_KEY);
+  } catch (e) { /* ignore */ }
+}
+
+// Items come in via SSE as enrichments arrive (initial refresh) OR replayed on
+// SSE connect (hard refresh, JVM still alive). Either way we keep state.items
+// in sync from the enriched.item field. Sort by numeric DOM-index id so the
+// list matches Gmail's order (smallest index = newest at the top).
+function ensureItemListed(item) {
+  if (!item || !item.id) return;
+  if (state.items.find(i => i.id === item.id)) return;
+  state.items.push(item);
+  state.items.sort((a, b) => Number(a.id) - Number(b.id));
+}
 
 const $ = (s) => document.querySelector(s);
 const list = $('#list');
@@ -381,6 +452,7 @@ function renderBadgeBar() {
   badgeBar.querySelectorAll('.badge-filter').forEach(el => {
     el.addEventListener('click', () => {
       state.filter = el.dataset.badge || null;
+      persistFilter();
       renderBadgeBar();
       renderList();
     });
@@ -422,6 +494,67 @@ function renderCtas(ctas) {
     </div>`;
 }
 
+function renderDrafts(id, drafts) {
+  if (!drafts) return '';
+  // The first non-empty tone is the initial visible tab. If all three are blank, omit the section.
+  const tones = ['formal', 'friendly', 'brief'];
+  const nonEmpty = tones.filter(t => drafts[t] && drafts[t].trim().length > 0);
+  if (nonEmpty.length === 0) return '';
+  const initial = nonEmpty[0];
+  const tabs = tones.map(t => {
+    const sel = t === initial ? 'true' : 'false';
+    const has = drafts[t] && drafts[t].trim().length > 0;
+    return `<button class="draft-tab" data-row="${id}" data-tone="${t}" aria-selected="${sel}"
+                    ${has ? '' : 'disabled style="opacity:0.4;cursor:not-allowed"'}>${t}</button>`;
+  }).join('');
+  return `
+    <div class="reply-drafts" data-row="${id}">
+      <div class="reply-drafts-header">
+        <span class="label">Reply drafts</span>
+        <div class="draft-tabs" role="tablist">${tabs}</div>
+      </div>
+      <pre class="draft-body" data-row="${id}">${escapeHtml(drafts[initial] || '')}</pre>
+      <div class="draft-actions">
+        <button class="draft-copy" data-row="${id}">Copy</button>
+      </div>
+    </div>`;
+}
+
+// Wires draft-tab clicks (swap visible tone) and draft-copy clicks (clipboard)
+// for one row. Called after every renderList() so freshly-rendered DOM has handlers.
+function wireDraftHandlers() {
+  list.querySelectorAll('.reply-drafts').forEach(panel => {
+    const rowId = panel.dataset.row;
+    const enriched = state.enriched[rowId];
+    if (!enriched || !enriched.replyDrafts) return;
+    const drafts = enriched.replyDrafts;
+    const body = panel.querySelector('.draft-body');
+    panel.querySelectorAll('.draft-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        if (tab.disabled) return;
+        const tone = tab.dataset.tone;
+        panel.querySelectorAll('.draft-tab').forEach(t =>
+          t.setAttribute('aria-selected', t === tab ? 'true' : 'false'));
+        body.textContent = drafts[tone] || '';
+      });
+    });
+    const copyBtn = panel.querySelector('.draft-copy');
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(body.textContent);
+        const orig = copyBtn.textContent;
+        copyBtn.classList.add('copied');
+        copyBtn.textContent = '✓ Copied';
+        setTimeout(() => { copyBtn.classList.remove('copied'); copyBtn.textContent = orig; }, 1500);
+      } catch (e) {
+        // Fallback: select the text so the user can ctrl+c manually
+        const range = document.createRange(); range.selectNodeContents(body);
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      }
+    });
+  });
+}
+
 function renderRow(item) {
   const enriched = state.enriched[item.id];
   let bodyHtml = '';
@@ -437,7 +570,8 @@ function renderRow(item) {
         ${badges ? `<div class="badges">${badges}</div>` : ''}
         <div class="summary">${escapeHtml(enriched.summary || '')}</div>
         ${renderCtas(enriched.ctas)}
-        <div class="latency">Analyzed in ${enriched.processedMs} ms</div>
+        ${enriched.needsReply ? renderDrafts(item.id, enriched.replyDrafts) : ''}
+        <div class="latency">Analyzed in ${enriched.processedMs} ms${enriched.needsReply ? ' · drafts ready' : ''}</div>
       </div>`;
   }
   const cls = enriched
@@ -473,6 +607,7 @@ function renderList() {
   list.innerHTML = visible.map(renderRow).join('');
   list.querySelectorAll('button[data-action="reprocess"]').forEach(b =>
     b.addEventListener('click', () => reprocess(b.dataset.id)));
+  wireDraftHandlers();
 }
 
 // -------- API ------------------------------------------------------
@@ -522,7 +657,16 @@ function ensureSse() {
       const id = enriched.item?.id;
       if (!id) return;
       state.enriched[id] = enriched;
-      // Update only the affected row + the badge bar.
+      // Re-add the inbox row in case this was a replay after a hard refresh
+      // (state.items would otherwise still be empty).
+      ensureItemListed(enriched.item);
+      // Mark replay-restored so the meta text can reflect it.
+      if (!state.hasReceivedReplay) {
+        state.hasReceivedReplay = true;
+        if (state.items.length > 0) {
+          setStatus('Restored from cache', 'var(--color-success)');
+        }
+      }
       renderList();
       renderBadgeBar();
       const remaining = state.items.filter(i => !state.enriched[i.id]).length;

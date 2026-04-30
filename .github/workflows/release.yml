@@ -1,0 +1,147 @@
+name: Release
+
+# Every push to main that touches code, the pom, or the install scripts builds
+# the fat-jar and either creates or updates a GitHub Release tagged
+# `v<pom-version>`. Bumping `<version>` in pom.xml = cutting a new release.
+#
+# Release assets:
+#   - intelli-mailbox-<version>.jar      (Spring Boot fat-jar, ~330 MB)
+#   - intelli-mailbox-<version>.jar.sha256
+#
+# The install scripts on intelliswarm.ai download from this exact URL pattern,
+# so a successful run here = the one-line installer becomes live.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - 'install/**'
+      - 'npm/**'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:   # manual run from the Actions tab if needed
+
+permissions:
+  contents: write   # required for softprops/action-gh-release to create tags + releases
+  # The npm publish step uses NPM_TOKEN from secrets, not GITHUB_TOKEN.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Read version from pom
+        id: ver
+        run: |
+          v=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null \
+              || mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          if [ -z "$v" ]; then
+            echo "::error::Could not resolve project.version from pom.xml"; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v"    >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $v"
+
+      - name: Build JAR + SHA-256
+        run: mvn -B -ntp clean package -DskipTests
+
+      - name: Locate artifacts
+        id: art
+        run: |
+          jar=$(ls target/*.jar | grep -v '\.original$' | head -1)
+          sha="${jar}.sha256"
+          if [ ! -f "$jar" ];  then echo "::error::JAR not found at $jar"; exit 1; fi
+          if [ ! -f "$sha" ];  then echo "::error::SHA-256 sidecar not found at $sha"; exit 1; fi
+          ls -la "$jar" "$sha"
+          echo "jar=$jar" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Publish / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: IntelliMailbox ${{ steps.ver.outputs.version }}
+          # If the tag/release already exists for this version, this just
+          # uploads/replaces the listed files. Bump <version> in pom for a new tag.
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          body: |
+            Automated build from `main` — commit `${{ github.sha }}`.
+
+            **Install (one-liner):**
+            ```
+            npm install -g intelli-mailbox                                     # any platform with Node 16+
+            powershell -c "irm https://intelliswarm.ai/install.ps1 | iex"     # Windows direct
+            curl -fsSL https://intelliswarm.ai/install.sh | bash               # macOS / Linux direct
+            ```
+
+            The installer verifies the SHA-256 of the JAR before running it.
+            See `intelli-mailbox-${{ steps.ver.outputs.version }}.jar.sha256` for the expected digest.
+          files: |
+            ${{ steps.art.outputs.jar }}
+            ${{ steps.art.outputs.sha }}
+
+      # ---------- npm publish ------------------------------------------
+      # The wrapper at npm/ is what users get with `npm i -g intelli-mailbox`.
+      # We sync the install scripts into the npm package, align the package
+      # version with the pom version, then publish — skipping cleanly if the
+      # version is already on the registry (no-op rebuilds shouldn't fail).
+      #
+      # Requires repo secret NPM_TOKEN (an npm "Automation" token — guide:
+      # https://docs.npmjs.com/creating-and-viewing-access-tokens).
+      - name: Set up Node 20 (for npm publish)
+        if: ${{ env.HAS_NPM_TOKEN == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Detect NPM_TOKEN secret
+        id: npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "HAS_NPM_TOKEN=true"  >> "$GITHUB_ENV"
+          else
+            echo "HAS_NPM_TOKEN=false" >> "$GITHUB_ENV"
+            echo "::warning::NPM_TOKEN secret not set — skipping npm publish."
+          fi
+
+      - name: Sync install scripts into npm package
+        if: ${{ env.HAS_NPM_TOKEN == 'true' }}
+        run: |
+          cp install/install.ps1 npm/scripts/install.ps1
+          cp install/install.sh  npm/scripts/install.sh
+
+      - name: Align npm package version with pom
+        if: ${{ env.HAS_NPM_TOKEN == 'true' }}
+        working-directory: npm
+        run: |
+          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Publish to npm (idempotent — skips if version already published)
+        if: ${{ env.HAS_NPM_TOKEN == 'true' }}
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          ver="${{ steps.ver.outputs.version }}"
+          if npm view "intelli-mailbox@$ver" version >/dev/null 2>&1; then
+            echo "intelli-mailbox@$ver already published — skipping."
+          else
+            npm publish --access public
+            echo "::notice::Published intelli-mailbox@$ver to npm."
+          fi

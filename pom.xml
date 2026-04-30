@@ -6,8 +6,10 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>ai.intelliswarm</groupId>
-    <artifactId>intellimailbox</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <artifactId>intelli-mailbox</artifactId>
+    <!-- Version is the source of truth for the GitHub Release tag — bumping this
+         on main triggers .github/workflows/release.yml to publish a new release. -->
+    <version>0.1.0</version>
     <packaging>jar</packaging>
 
     <name>IntelliMailbox</name>
@@ -92,6 +94,15 @@
             <version>1.50.0</version>
         </dependency>
 
+        <!-- swarmai-core's MemoryAutoConfiguration references StringRedisTemplate.
+             Without Redis on the classpath, Spring's auto-configuration introspection
+             fails with NoClassDefFoundError before our exclude list can take effect.
+             We don't use Redis at runtime — this just satisfies the classloader. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -122,6 +133,36 @@
                         <goals>
                             <goal>repackage</goal>
                         </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Generate target/<jar>.sha256 alongside the fat-jar so the install
+                 scripts can verify the download. Runs in the package phase AFTER
+                 Spring Boot's repackage (declaration order = execution order). -->
+            <plugin>
+                <groupId>net.nicoulaj.maven.plugins</groupId>
+                <artifactId>checksum-maven-plugin</artifactId>
+                <version>1.11</version>
+                <executions>
+                    <execution>
+                        <id>checksum-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>files</goal>
+                        </goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>${project.artifactId}-${project.version}.jar</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <algorithms>
+                                <algorithm>SHA-256</algorithm>
+                            </algorithms>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

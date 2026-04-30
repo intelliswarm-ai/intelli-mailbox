@@ -11,6 +11,17 @@ spring:
     web-application-type: servlet
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:ollama}
+  # NOTE: spring.autoconfigure.exclude is set per-profile in application-ollama.yml /
+  # application-openai-mini.yml — Spring Boot replaces (not merges) list-typed properties
+  # across profiles, so the full exclude list lives in each profile.
+
+# We pull spring-boot-starter-data-redis only so swarmai-core's MemoryAutoConfiguration
+# can class-load (it falls back to in-memory storage at runtime). The actuator's Redis
+# health indicator otherwise floods the log trying to connect to localhost:6379.
+management:
+  health:
+    redis:
+      enabled: false
 
 server:
   port: ${SERVER_PORT:8090}

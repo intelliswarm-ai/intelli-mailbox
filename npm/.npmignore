@@ -1,0 +1,15 @@
+# Don't ship development noise to the npm registry.
+.git
+.gitignore
+.github
+node_modules
+*.log
+*.tmp
+.DS_Store
+test
+tests
+__tests__
+spec
+.editorconfig
+.eslintrc*
+.prettierrc*

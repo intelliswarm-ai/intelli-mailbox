@@ -35,15 +35,24 @@ public class EmailReader {
         this.maxEmails = maxEmails;
     }
 
-    public List<InboxItem> listInbox() {
+    /**
+     * {@code synchronized} so concurrent web requests + the worker thread can't
+     * leave Chrome in a half-rendered state for the next caller — BrowserTool
+     * drives ONE Chrome page, period.
+     */
+    public synchronized List<InboxItem> listInbox() {
         browser.execute(Map.of("operation", "navigate",
                 "url", "https://mail.google.com/mail/u/0/#inbox"));
         browser.execute(Map.of("operation", "wait_for",
                 "selector", "[role=\"main\"]",
                 "timeout_ms", 30_000));
 
-        // Pull the structured fields with a small focused JS expression — much more
-        // reliable than parsing innerText of [role="main"].
+        // CRITICAL: each row reports its raw DOM index (its position among ALL
+        // [role="row"] nodes, header included). The Java side uses that DOM
+        // index as the InboxItem id. {@link #readEmail(String)} then clicks
+        // rows[id] directly — no listing-vs-DOM offset drift, which previously
+        // caused row N to scrape the body of row N+k whenever any earlier row
+        // had no sender/subject and got filtered out.
         String js = "(() => {\n" +
                 "  const rows = document.querySelectorAll('[role=\"main\"] [role=\"row\"]');\n" +
                 "  const out = [];\n" +
@@ -58,7 +67,7 @@ public class EmailReader {
                 "    const time    = r.querySelector('span.xW span')?.innerText\n" +
                 "                 ?? r.querySelector('td[title]')?.getAttribute('title')\n" +
                 "                 ?? '';\n" +
-                "    if (sender || subject) out.push({sender, subject, snippet, time});\n" +
+                "    if (sender || subject) out.push({domIndex: idx, sender, subject, snippet, time});\n" +
                 "  });\n" +
                 "  return JSON.stringify(out.slice(0, " + maxEmails + "));\n" +
                 "})()";
@@ -67,29 +76,42 @@ public class EmailReader {
     }
 
     /**
-     * Opens the email at positional index {@code id}, scrapes its body, returns to inbox.
-     * @return the email's visible body text, or empty string if click failed
+     * Opens the email whose DOM-index id was returned by {@link #listInbox()},
+     * scrapes its body, returns to inbox. Synchronized for the same reason as
+     * {@code listInbox} — exclusive Chrome-page access during the click + scrape.
      */
-    public String readEmail(String id) {
+    public synchronized String readEmail(String id) {
         int idx;
         try { idx = Integer.parseInt(id); } catch (NumberFormatException e) { return ""; }
 
+        // id IS the raw DOM index — no +1 offset, header was already accounted for
+        // when listInbox skipped row 0.
         String clickJs = String.format(
                 "(() => { const rows = document.querySelectorAll('[role=\"main\"] [role=\"row\"]'); " +
-                "  const target = rows[%d + 1]; if (!target) return false; target.click(); return true; })()",
+                "  const target = rows[%d]; if (!target) return false; target.click(); return true; })()",
                 idx);
         Object clicked = browser.execute(Map.of("operation", "evaluate_js", "code", clickJs));
         if (!"true".equals(String.valueOf(clicked))) {
-            logger.warn("EmailReader: couldn't click row idx={}", idx);
+            logger.warn("EmailReader: couldn't click row domIndex={}", idx);
             return "";
         }
 
         browser.execute(Map.of("operation", "wait_for",
                 "selector", "[role=\"main\"] [role=\"listitem\"], div.adn",
                 "timeout_ms", 15_000));
+        // Scrape the MESSAGE container (div.adn), not all of [role="main"] which
+        // includes the folder list, search bar, sidebar ads and Gmail UI toasts
+        // ("You can't react with an emoji to a group" was leaking through into
+        // the LLM input from the latter). Fall back to [role="main"] only if Gmail
+        // hasn't materialised div.adn yet — e.g. on a cold view.
         Object body = browser.execute(Map.of("operation", "scrape",
-                "selector", "[role=\"main\"]"));
+                "selector", "div.adn"));
         String text = String.valueOf(body);
+        if (text == null || text.isBlank() || "null".equals(text)) {
+            Object fallback = browser.execute(Map.of("operation", "scrape",
+                    "selector", "[role=\"main\"]"));
+            text = String.valueOf(fallback);
+        }
 
         browser.execute(Map.of("operation", "navigate",
                 "url", "https://mail.google.com/mail/u/0/#inbox"));
@@ -106,10 +128,12 @@ public class EmailReader {
             String body = json.startsWith("\"") ? JSON.readValue(json, String.class) : json;
             List<Map<String, Object>> raw = JSON.readValue(body, new TypeReference<>() {});
             List<InboxItem> out = new ArrayList<>(raw.size());
-            for (int i = 0; i < raw.size(); i++) {
-                Map<String, Object> r = raw.get(i);
+            for (Map<String, Object> r : raw) {
+                Object dom = r.get("domIndex");
+                String id = dom == null ? "" : dom.toString();
+                if (id.isBlank()) continue;
                 out.add(new InboxItem(
-                        String.valueOf(i),
+                        id,
                         str(r.get("sender")),
                         str(r.get("subject")),
                         str(r.get("snippet")),

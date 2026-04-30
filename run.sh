@@ -4,7 +4,7 @@
 #
 # What it does:
 #   1. Auto-launches your real Chrome with a dedicated CDP profile at
-#      ~/.intelliswarm/intellimailbox-chrome (separate from your everyday Chrome).
+#      ~/.intelliswarm/intelli-mailbox-chrome (separate from your everyday Chrome).
 #   2. Boots the Spring Boot web app on http://localhost:8090.
 #   3. Pre-warms Gmail; opens the IntelliMailbox UI in a new tab in the same Chrome.
 #   4. As you click "Refresh inbox", every visible email is analyzed locally —
@@ -18,7 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PROFILE_DIR="${INTELLIMAILBOX_PROFILE_DIR:-$HOME/.intelliswarm/intellimailbox-chrome}"
+PROFILE_DIR="${INTELLIMAILBOX_PROFILE_DIR:-$HOME/.intelliswarm/intelli-mailbox-chrome}"
 
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-ollama}"
 

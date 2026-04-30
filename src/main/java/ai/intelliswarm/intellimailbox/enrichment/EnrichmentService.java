@@ -27,25 +27,46 @@ public class EnrichmentService {
 
     private static final Logger logger = LoggerFactory.getLogger(EnrichmentService.class);
 
-    private final Agent agent;
-    private final long perEmailTimeoutMs;
+    private final Agent enrichmentAgent;
+    private final Agent draftAgent;
 
     public EnrichmentService(ChatClient.Builder chatClientBuilder,
                              @Value("${intellimailbox.preprocessing.per-email-timeout-ms:300000}")
                              long perEmailTimeoutMs) {
-        this.perEmailTimeoutMs = perEmailTimeoutMs;
-        this.agent = Agent.builder()
+        int timeout = (int) Math.min(perEmailTimeoutMs, Integer.MAX_VALUE);
+        ChatClient chatClient = chatClientBuilder.build();
+
+        this.enrichmentAgent = Agent.builder()
                 .role("Mailbox Analyst")
                 .goal("Read one email and return: a 1-2 sentence summary, the multi-category "
-                        + "badges that apply, and a list of structured action items the recipient "
-                        + "could take, plus a phishing flag if anything looks suspicious.")
+                        + "badges that apply, structured action items the recipient could take, "
+                        + "a phishing flag, and whether a reply is genuinely warranted.")
                 .backstory("You are a precise executive assistant. You never invent senders, "
                         + "links, dates, or amounts that aren't in the email text. If the email is "
-                        + "informational with no action needed, return an empty ctas list.")
-                .chatClient(chatClientBuilder.build())
+                        + "informational with no action needed, return an empty ctas list and "
+                        + "needsReply=false.")
+                .chatClient(chatClient)
                 .verbose(false)
                 .temperature(0.1)
-                .maxExecutionTime((int) Math.min(perEmailTimeoutMs, Integer.MAX_VALUE))
+                .maxExecutionTime(timeout)
+                .build();
+
+        // Higher temp on the drafter so the three tones actually diverge. With qwen2.5:3b
+        // at 0.5 it produced stock acknowledgments ("I have noted your request and will
+        // proceed as instructed"); 0.75 gives it room to address the actual ask.
+        this.draftAgent = Agent.builder()
+                .role("Reply Drafter")
+                .goal("Given one email, produce three short reply drafts in different tones: "
+                        + "formal, friendly, and brief.")
+                .backstory("You write concise, professional email replies that address the actual "
+                        + "question or ask in the email. You never agree to things the original "
+                        + "email didn't ask, never invent dates or commitments, and never break "
+                        + "character (no AI-disclosure prefixes, no meta commentary, no stock "
+                        + "acknowledgements like 'I have noted your request').")
+                .chatClient(chatClient)
+                .verbose(false)
+                .temperature(0.75)
+                .maxExecutionTime(timeout)
                 .build();
     }
 
@@ -58,32 +79,25 @@ public class EnrichmentService {
         long t0 = System.currentTimeMillis();
         if (emailBody == null || emailBody.isBlank()) {
             return new EnrichedEmail(item, "(empty email body — nothing to analyze)",
-                    List.of(), List.of(), false, 0L, false);
+                    List.of(), List.of(), false, false, null, 0L, false);
         }
         Task task = Task.builder()
-                .description(buildPrompt(emailBody))
-                .expectedOutput("EnrichmentResult JSON with summary, badges[], ctas[], phishingSuspected")
+                .description(buildPrompt(item, emailBody))
+                .expectedOutput("EnrichmentResult JSON with summary, badges[], ctas[], phishingSuspected, needsReply")
                 .outputType(EnrichmentResult.class)
-                .agent(agent)
+                .agent(enrichmentAgent)
                 .build();
 
+        EnrichmentResult result;
         try {
-            TaskOutput out = agent.executeTask(task, java.util.List.of());
-            EnrichmentResult result = out.as(EnrichmentResult.class);
-            long elapsed = System.currentTimeMillis() - t0;
+            TaskOutput out = enrichmentAgent.executeTask(task, java.util.List.of());
+            result = out.as(EnrichmentResult.class);
             if (result == null) {
+                long elapsed = System.currentTimeMillis() - t0;
                 logger.debug("EnrichmentService: LLM returned unparseable output for id={}; raw={}",
                         item.id(), excerpt(out.getRawOutput(), 200));
                 return EnrichedEmail.failed(item, "LLM returned unparseable JSON", elapsed);
             }
-            return new EnrichedEmail(
-                    item,
-                    nullToEmpty(result.summary),
-                    parseBadges(result.badges),
-                    result.ctas == null ? List.of() : result.ctas,
-                    Boolean.TRUE.equals(result.phishingSuspected),
-                    elapsed,
-                    false);
         } catch (Exception e) {
             long elapsed = System.currentTimeMillis() - t0;
             logger.warn("EnrichmentService: enrichment failed for id={} ({})",
@@ -91,32 +105,226 @@ public class EnrichmentService {
             return EnrichedEmail.failed(item,
                     e.getClass().getSimpleName() + ": " + e.getMessage(), elapsed);
         }
+
+        List<Badge> badges = parseBadges(result.badges);
+        List<Cta> ctas = filterTruthful(normalizeCtas(result.ctas), emailBody);
+
+        // Hardcoded guards on top of the model's own classification — qwen2.5:3b
+        // overcalls needsReply=true on marketing/newsletter mail. If the email is
+        // automated or a newsletter, no human reply is warranted regardless of what
+        // the model said. Same logic as the badge calibration block in the prompt
+        // — applying it deterministically server-side rather than trusting a 3B model.
+        boolean needsReply = Boolean.TRUE.equals(result.needsReply)
+                && !badges.contains(Badge.AUTOMATED)
+                && !badges.contains(Badge.NEWSLETTER);
+        // Also: if there are zero remaining CTAs OR none of them are REPLY-typed,
+        // a draft would be answering nothing. Skip.
+        if (needsReply && ctas.stream().noneMatch(c -> "REPLY".equals(c.type())
+                || "OTHER".equals(c.type())
+                || "REVIEW".equals(c.type())
+                || "SCHEDULE".equals(c.type()))) {
+            needsReply = false;
+        }
+
+        ReplyDrafts drafts = needsReply
+                ? draftReplies(item, emailBody, nullToEmpty(result.summary))
+                : null;
+
+        long elapsed = System.currentTimeMillis() - t0;
+        return new EnrichedEmail(
+                item,
+                nullToEmpty(result.summary),
+                badges,
+                ctas,
+                Boolean.TRUE.equals(result.phishingSuspected),
+                needsReply,
+                drafts,
+                elapsed,
+                false);
     }
 
-    private static String buildPrompt(String emailBody) {
-        return """
-                Analyze the email below and return a single JSON object matching the schema.
+    /**
+     * Drop CTAs whose {@code sourceQuote} doesn't actually appear in the email body —
+     * those are model hallucinations, frequently from Gmail UI chrome leaking into
+     * the scrape (e.g. "You can't react with an emoji to a group"). Lossy but high-precision.
+     */
+    private static List<Cta> filterTruthful(List<Cta> ctas, String body) {
+        if (ctas == null || ctas.isEmpty()) return List.of();
+        if (body == null || body.isBlank()) return ctas;
+        String haystack = body.toLowerCase();
+        List<Cta> out = new ArrayList<>(ctas.size());
+        for (Cta c : ctas) {
+            String quote = c.sourceQuote();
+            if (quote == null || quote.isBlank()) {
+                // No quote → keep the CTA but don't claim provenance.
+                out.add(c);
+                continue;
+            }
+            // Match a substring of the quote (first ~6 words) rather than the whole
+            // thing — Gmail-UI chrome quotes won't, real body excerpts will.
+            String needle = collapseWhitespace(quote).toLowerCase();
+            if (needle.length() > 60) needle = needle.substring(0, 60);
+            if (haystack.contains(needle) || haystack.contains(collapseWhitespace(quote.toLowerCase()))) {
+                out.add(c);
+            }
+            // else dropped silently — the model invented the quote.
+        }
+        return out;
+    }
 
-                Rules:
-                - summary: 1–2 sentences max, factual, no markdown.
+    private static String collapseWhitespace(String s) {
+        return s == null ? "" : s.replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * Pass 2 — only runs for emails the first pass classified {@code needsReply=true}.
+     * Returns three short drafts, one per tone. Failures here don't fail the whole
+     * enrichment — we just return null and the UI omits the drafts section.
+     */
+    private ReplyDrafts draftReplies(InboxItem item, String emailBody, String summary) {
+        Task task = Task.builder()
+                .description(buildDraftPrompt(item, emailBody, summary))
+                .expectedOutput("JSON with three string fields: formal, friendly, brief")
+                .outputType(ReplyDraftsLlmOutput.class)
+                .agent(draftAgent)
+                .build();
+        try {
+            TaskOutput out = draftAgent.executeTask(task, java.util.List.of());
+            ReplyDraftsLlmOutput d = out.as(ReplyDraftsLlmOutput.class);
+            if (d == null) {
+                logger.debug("EnrichmentService: drafter returned unparseable output for id={}", item.id());
+                return null;
+            }
+            return new ReplyDrafts(
+                    nullToEmpty(d.formal).trim(),
+                    nullToEmpty(d.friendly).trim(),
+                    nullToEmpty(d.brief).trim());
+        } catch (Exception e) {
+            logger.debug("EnrichmentService: draft pass failed for id={} ({}) — UI will omit drafts",
+                    item.id(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Anchors the prompt with the inbox-row metadata. With small models the body
+     * scrape is noisy (Gmail UI chrome, sidebar text); without an explicit From/
+     * Subject anchor the LLM tends to hallucinate the wrong topic.
+     */
+    private static String buildPrompt(InboxItem item, String emailBody) {
+        return """
+                You are an executive assistant. Analyze ONE email and return a single JSON object matching the schema.
+
+                Output rules:
+                - summary: 1–2 sentences max, factual, no markdown. Must be about the email below — never invent senders, links, dates, or amounts that aren't in the text.
                 - badges: subset of [MEETING, RISK, EXTERNAL, AUTOMATED, VIP, FOLLOW_UP, NEWSLETTER, FINANCE].
-                  Use multiple where they apply. Empty list if none fit.
-                  RISK should ONLY be set for phishing / scam / impersonation content.
-                - ctas: list of concrete action items the recipient could take.
-                  Empty list if email is informational only.
+                  Pick zero or more, only the ones that genuinely apply. Calibration:
+                    MEETING     → calendar invites, scheduling discussion, accept/decline.
+                    RISK        → phishing, scam, impersonation, urgent-credentials warning. Almost never else.
+                    EXTERNAL    → from outside your org / a vendor / a recruiter / a personal contact.
+                    AUTOMATED   → no-reply, system, build/CI/Dependabot/security-scan, transactional.
+                    VIP         → from or about a senior exec, key customer, or high-priority contact.
+                    FOLLOW_UP   → expects a reply, ping, response, RSVP, application.
+                    NEWSLETTER  → marketing/digest/promo content. NOT job alerts, NOT calendar invites,
+                                  NOT GitHub alerts — those are EXTERNAL or AUTOMATED.
+                    FINANCE     → invoice, receipt, banking, market report, payment.
+                  Use multiple where they apply (a recruiter alert is EXTERNAL + FOLLOW_UP).
+                - ctas: list of concrete action items the recipient could take. Empty list if informational only.
                   Each cta has:
                     text:        ≤200 chars, restate the action in one short sentence.
                     dueDate:     ISO 8601 date "YYYY-MM-DD" if a deadline is mentioned, else null.
-                    type:        one of [REPLY, REVIEW, SCHEDULE, PAY, SUBMIT, READ, OTHER].
-                    priority:    one of [LOW, MEDIUM, HIGH] based on urgency cues in the email.
-                    sourceQuote: short verbatim snippet (≤120 chars) from the email that justifies this CTA.
-                - phishingSuspected: true if the email looks like phishing / impersonation / urgent-warning scam.
+                    type:        EXACTLY one of [REPLY, REVIEW, SCHEDULE, PAY, SUBMIT, READ, OTHER]. No other values.
+                    priority:    EXACTLY one of [LOW, MEDIUM, HIGH] based on urgency cues. No other values.
+                    sourceQuote: short verbatim snippet (≤120 chars) from the email body that justifies this CTA.
+                - phishingSuspected: true ONLY if the email genuinely looks like phishing / impersonation / urgent-credentials scam.
+                - needsReply: true ONLY if a human response is genuinely warranted. Calibration:
+                    true   → direct question to recipient, ask for review/decision/info, calendar invite needing accept/decline,
+                             recruiter outreach you might engage with, personal message expecting a response.
+                    false  → newsletters, marketing, digests, GitHub Dependabot/CI/security alerts, no-reply transactional mail,
+                             FYI broadcasts, automated job-alert digests where you'd just click "apply" not write back.
 
-                Do NOT invent details. Only extract what is literally in the text.
+                EMAIL METADATA:
+                  From:    %s
+                  Subject: %s
+                  Time:    %s
+                  Snippet: %s
 
-                EMAIL:
-                """ + truncate(emailBody, 4000);
+                EMAIL BODY (may contain Gmail UI chrome around it — focus on the actual message text):
+                %s
+                """.formatted(
+                        nullToDash(item.sender()),
+                        nullToDash(item.subject()),
+                        nullToDash(item.time()),
+                        nullToDash(item.snippet()),
+                        truncate(emailBody, 4000));
     }
+
+    private static String buildDraftPrompt(InboxItem item, String emailBody, String summary) {
+        return """
+                Write three short reply drafts to the email below — one per tone.
+
+                CONTENT REQUIREMENTS (apply to all three drafts):
+                - Address the actual question or ask. If the sender asked X, the draft answers X.
+                  Don't write generic acknowledgements — specifically, NEVER use any of these stock phrases:
+                    "I have noted your request"
+                    "I will proceed as instructed"
+                    "Thank you for your email"
+                    "I have received your message"
+                    "Noted" (as a one-word reply)
+                  Instead, write something only this specific email would prompt.
+                - Reference at least one concrete detail from the email body (a name, a date, the subject topic)
+                  so the draft couldn't be confused with a reply to a different email.
+                - Match the LANGUAGE of the email: if it's in French, draft in French; Greek → Greek; etc.
+                - ≤80 words each. Plain text, no markdown, no signature block, no subject line, no meta commentary.
+                - Never invent dates, links, file names, prices, attendees, or commitments not in the original email.
+
+                TONE CALIBRATION (the three drafts must read differently):
+                - formal:    professional, third-person where natural. Suitable for client / external / senior stakeholder.
+                             Salutation + body + closing.
+                - friendly:  warm, first-person, conversational. Teammate-level. "Thanks!" / "sure thing" OK.
+                - brief:     1–2 sentences max, very direct. Phone-thumb-reply length. No salutation needed.
+
+                Return JSON: { "formal": "...", "friendly": "...", "brief": "..." }
+
+                EMAIL METADATA:
+                  From:    %s
+                  Subject: %s
+
+                EMAIL BODY:
+                %s
+
+                CONTEXT (your one-line summary of this email):
+                %s
+                """.formatted(
+                        nullToDash(item.sender()),
+                        nullToDash(item.subject()),
+                        truncate(emailBody, 3000),
+                        nullToDash(summary));
+    }
+
+    /**
+     * Clamp every CTA's {@code type} and {@code priority} to a valid enum name —
+     * the LLM happily emits invented values like {@code MESSAGE}, {@code ACTION},
+     * {@code INTERNAL-LINK} that would otherwise pass through to the UI raw.
+     */
+    private static List<Cta> normalizeCtas(List<Cta> raw) {
+        if (raw == null || raw.isEmpty()) return List.of();
+        List<Cta> out = new ArrayList<>(raw.size());
+        for (Cta c : raw) {
+            if (c == null || c.text() == null || c.text().isBlank()) continue;
+            String type = c.typeEnum().name();      // resolves to OTHER if invalid
+            String priority = c.priorityEnum().name(); // resolves to MEDIUM if invalid
+            out.add(new Cta(
+                    truncate(c.text(), 200),
+                    c.dueDate(),
+                    type,
+                    priority,
+                    c.sourceQuote() == null ? null : truncate(c.sourceQuote(), 240)));
+        }
+        return out;
+    }
+
+    private static String nullToDash(String s) { return s == null || s.isBlank() ? "—" : s; }
 
     private static List<Badge> parseBadges(List<String> raw) {
         if (raw == null || raw.isEmpty()) return List.of();

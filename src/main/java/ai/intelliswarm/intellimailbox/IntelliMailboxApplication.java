@@ -33,7 +33,12 @@ import java.time.Duration;
  * results stream back over SSE to {@code /api/inbox/stream} as each email is
  * analyzed.
  */
-@SpringBootApplication
+/**
+ * Component scan widened to {@code ai.intelliswarm} so framework beans like
+ * {@code BrowserTool} (in {@code ai.intelliswarm.swarmai.tool.common}) get picked
+ * up alongside this app's own beans.
+ */
+@SpringBootApplication(scanBasePackages = "ai.intelliswarm")
 public class IntelliMailboxApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(IntelliMailboxApplication.class);

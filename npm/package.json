@@ -1,0 +1,41 @@
+{
+  "name": "intelli-mailbox",
+  "version": "0.1.0",
+  "description": "AI-preprocessed inbox on top of your real Gmail. Local LLM by default — emails never leave your laptop.",
+  "keywords": [
+    "intelliswarm",
+    "intelli-mailbox",
+    "ai",
+    "gmail",
+    "ollama",
+    "inbox",
+    "llm",
+    "local-llm",
+    "preprocess"
+  ],
+  "homepage": "https://intelliswarm.ai/products/intelli-mailbox",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/intelliswarm/intelli-mailbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/intelliswarm/intelli-mailbox/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "IntelliSwarm.AI <hello@intelliswarm.ai>",
+  "engines": {
+    "node": ">=16"
+  },
+  "bin": {
+    "intelli-mailbox": "bin/intelli-mailbox.js"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ]
+}

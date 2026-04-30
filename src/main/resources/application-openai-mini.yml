@@ -6,9 +6,21 @@
 # ============================================================================
 spring:
   autoconfigure:
+    # NOTE: this list REPLACES the base application.yml list (Spring Boot doesn't merge
+    # list-typed properties across profiles). Keep the vector-store + JPA excludes here too.
     exclude:
+      # Suppress Ollama + Anthropic starters — only OpenAI active in this profile.
       - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
       - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
+      - org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration
+      # swarmai-tools transitively pulls Chroma + PgVector starters; both register a
+      # bean named "vectorStore" → BeanDefinitionOverrideException at startup.
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+      - org.springframework.ai.vectorstore.chroma.autoconfigure.ChromaVectorStoreAutoConfiguration
+      # JPA + DataSource: no entities, no datasource — Hibernate's empty-metamodel error.
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
   ai:
     openai:
       api-key: ${OPENAI_API_KEY:}
