@@ -1,0 +1,105 @@
+name: Native installers
+
+# Builds .msi (Windows), .dmg (macOS), and .deb (Linux) on every push to main
+# that touches code/pom/installer assets, and attaches the artifacts to the
+# GitHub Release tagged v<pom-version>. Runs alongside release.yml — that one
+# handles the fat-jar + npm; this one handles the native installers.
+#
+# Each runner uses jpackage (built into JDK 21+) which jlinks a custom JRE
+# into the installer, so end users don't need Java pre-installed.
+#
+# Permissions:
+#   contents: write — required to upload assets to the release.
+# No code-signing certs configured yet; on Windows users see a SmartScreen
+# warning, on macOS Gatekeeper requires "open anyway" the first time.
+# Wire signing later via secrets WIN_SIGN_CERT, APPLE_ID, etc.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - 'installer/**'
+      - '.github/workflows/native-installers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }} installer
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            profile: linux-installer
+            artifact-glob: 'target/installers/*.deb'
+          - os: macos-latest
+            profile: mac-installer
+            artifact-glob: 'target/installers/*.dmg'
+          - os: windows-latest
+            profile: win-installer
+            artifact-glob: 'target/installers/*.msi'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (with jpackage tooling)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Read version from pom
+        id: ver
+        shell: bash
+        run: |
+          v=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v"    >> "$GITHUB_OUTPUT"
+
+      # macOS needs a .icns file. Build it from icon.png on the runner — sips +
+      # iconutil ship with Xcode CLT which is preinstalled on macos-latest.
+      - name: Generate macOS .icns from icon.png
+        if: matrix.os == 'macos-latest'
+        run: |
+          set -e
+          cd installer/icons
+          mkdir -p icon.iconset
+          for size in 16 32 64 128 256 512; do
+            sips -z $size $size icon.png --out icon.iconset/icon_${size}x${size}.png >/dev/null
+            sips -z $((size*2)) $((size*2)) icon.png --out icon.iconset/icon_${size}x${size}@2x.png >/dev/null
+          done
+          iconutil -c icns icon.iconset -o icon.icns
+          ls -la icon.icns
+          rm -rf icon.iconset
+
+      # On Linux, jpackage's DEB output needs the `fakeroot` binary present.
+      - name: Install fakeroot (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update -qq && sudo apt-get install -y fakeroot
+
+      - name: Build fat-jar + native installer
+        shell: bash
+        # The OS-matching profile (win/mac/linux-installer) is auto-activated by
+        # the pom, so a single `mvn package` runs Spring Boot's repackage AND
+        # jpackage in sequence, leaving the installer at target/installers/.
+        run: mvn -B -ntp clean package -DskipTests
+
+      - name: List built installer
+        shell: bash
+        run: ls -la target/installers/
+
+      - name: Upload installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          fail_on_unmatched_files: true
+          files: ${{ matrix.artifact-glob }}
