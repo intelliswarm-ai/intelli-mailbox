@@ -1,0 +1,26 @@
+# ============================================================================
+# Ollama profile — DEFAULT (local-only, privacy-by-default)
+# ============================================================================
+# Runs against http://localhost:11434. No API keys leave the machine.
+# Switch with: --spring.profiles.active=openai-mini for cloud LLM.
+# ============================================================================
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  ai:
+    ollama:
+      base-url: ${SPRING_AI_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL:mistral:7b}
+          temperature: 0.1
+
+swarmai:
+  workflow:
+    model: ${SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL:mistral:7b}

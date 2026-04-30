@@ -1,0 +1,28 @@
+target/
+*.class
+*.jar
+*.war
+*.log
+
+# IntelliJ / VSCode
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# Maven
+.mvn/
+mvnw.cmd
+mvnw
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local dev artifacts
+output/
+*.tmp
+.env
+.env.local

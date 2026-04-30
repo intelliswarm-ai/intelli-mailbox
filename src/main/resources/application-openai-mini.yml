@@ -1,0 +1,22 @@
+# ============================================================================
+# OpenAI gpt-4o-mini profile — opt-in, faster + sharper than local Ollama
+# ============================================================================
+# Activate with: SPRING_PROFILES_ACTIVE=openai-mini OPENAI_API_KEY=sk-... ./run.sh
+# Cost: ~$0.0005 per email enrichment.
+# ============================================================================
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: ${SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL:gpt-4o-mini}
+          temperature: 0.1
+
+swarmai:
+  workflow:
+    model: ${SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL:gpt-4o-mini}

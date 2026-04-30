@@ -1,0 +1,32 @@
+# ============================================================================
+# IntelliMailbox — defaults
+# ============================================================================
+# Privacy-by-default: local Ollama, web on :8090, BrowserTool attached to a
+# real Chrome via CDP so Google's signin flow accepts us.
+# ============================================================================
+spring:
+  application:
+    name: intellimailbox
+  main:
+    web-application-type: servlet
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:ollama}
+
+server:
+  port: ${SERVER_PORT:8090}
+
+swarmai:
+  tools:
+    browser:
+      enabled: true
+      mode: ${SWARMAI_BROWSER_MODE:attach}
+      cdp-url: ${SWARMAI_BROWSER_CDP_URL:http://localhost:9222}
+      user-data-dir: ${SWARMAI_BROWSER_USER_DATA_DIR:${user.home}/.intelliswarm/intellimailbox-chrome}
+      allowed-hosts: google.com,gmail.com
+
+intellimailbox:
+  preprocessing:
+    # Cap concurrent inbox rows pulled per refresh (BrowserTool is single-page-serial)
+    max-emails: ${INTELLIMAILBOX_MAX_EMAILS:25}
+    # Generous timeout per email — cold local Ollama can take 60s+ on CPU.
+    per-email-timeout-ms: ${INTELLIMAILBOX_TIMEOUT_MS:300000}

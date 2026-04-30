@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>IntelliMailbox — AI-preprocessed inbox</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================================
+     * Two themes share variable names; toggle swaps the values.
+     *   default            = intelliswarm dark (lavender→pink→peach)
+     *   [data-theme=light] = white surfaces, blue/red accents
+     * ============================================================ */
+    :root {
+      --bg-primary:     #08080d;
+      --bg-secondary:   rgba(8, 8, 13, 0.6);
+      --bg-card:        linear-gradient(180deg, rgba(141, 141, 185, 0.16) 0%, rgba(8, 8, 12, 0) 100%);
+      --bg-card-hover:  linear-gradient(180deg, rgba(165, 112, 255, 0.18) 0%, rgba(8, 8, 12, 0) 100%);
+      --bg-input:       rgba(0, 0, 0, 0.30);
+      --bg-header:      rgba(8, 8, 13, 0.6);
+      --border-subtle:  #27243b;
+      --border-section: #201c39;
+      --text-primary:   #c0c0d8;
+      --text-secondary: #a6a6c9;
+      --text-muted:     #8181b1;
+      --text-heading:   #ffffff;
+      --accent:         #a570ff;
+      --accent-2:       #ff6eb2;
+      --accent-dim:     rgba(165, 112, 255, 0.15);
+      --accent-glow:    rgba(165, 112, 255, 0.45);
+      --gradient-brand: linear-gradient(98deg, #a570ff 0%, #ff6eb2 50%, #ffad66 100%);
+      --color-success:  #66bb6a;
+      --color-warning:  #ffad66;
+      --color-error:    #ff6e6e;
+      --color-info:     #4fc3f7;
+      --shadow-card:    0 1px 0 rgba(255,255,255,0.02) inset;
+      --header-blur:    blur(8px);
+      --font-sans:      'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono:      'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    }
+    [data-theme="light"] {
+      --bg-primary:     #f6f8fc;
+      --bg-secondary:   #ffffff;
+      --bg-card:        #ffffff;
+      --bg-card-hover:  #f1f3f4;
+      --bg-input:       #ffffff;
+      --bg-header:      #ffffff;
+      --border-subtle:  #dadce0;
+      --border-section: #e8eaed;
+      --text-primary:   #3c4043;
+      --text-secondary: #5f6368;
+      --text-muted:     #80868b;
+      --text-heading:   #202124;
+      --accent:         #1a73e8;
+      --accent-2:       #c5221f;
+      --accent-dim:     rgba(26, 115, 232, 0.10);
+      --accent-glow:    rgba(26, 115, 232, 0.25);
+      --gradient-brand: linear-gradient(98deg, #1a73e8 0%, #c5221f 100%);
+      --color-success:  #188038;
+      --color-warning:  #f9ab00;
+      --color-error:    #d93025;
+      --color-info:     #1a73e8;
+      --shadow-card:    0 1px 2px rgba(60, 64, 67, 0.08), 0 1px 3px rgba(60, 64, 67, 0.04);
+      --header-blur:    none;
+      --font-sans:      'Roboto', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
+
+    header {
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border-section);
+      backdrop-filter: var(--header-blur);
+      padding: 14px 24px;
+      display: flex; align-items: center; gap: 16px;
+      position: sticky; top: 0; z-index: 50;
+    }
+    header h1 {
+      margin: 0; font-size: 1.2rem; font-weight: 600; letter-spacing: 0.02em;
+      color: var(--text-heading);
+    }
+    header h1 .accent {
+      background: var(--gradient-brand);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header .spacer { flex: 1; }
+    header .status { font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    header .status .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-success);
+      box-shadow: 0 0 8px var(--color-success);
+    }
+
+    .theme-toggle {
+      display: inline-flex; align-items: center;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px; padding: 3px; gap: 0;
+    }
+    .theme-toggle button {
+      all: unset; cursor: pointer; font-family: inherit; font-size: 0.78rem; font-weight: 500;
+      color: var(--text-muted); padding: 5px 12px; border-radius: 999px;
+      display: inline-flex; align-items: center; gap: 6px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .theme-toggle button[aria-pressed="true"] {
+      background: var(--gradient-brand); color: #ffffff;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    [data-theme="light"] .theme-toggle button[aria-pressed="true"] {
+      background: var(--accent); color: #ffffff; box-shadow: none;
+    }
+    .theme-toggle button:hover:not([aria-pressed="true"]) { color: var(--text-primary); }
+
+    .toolbar {
+      padding: 14px 24px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-section);
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    button {
+      background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent);
+      padding: 7px 14px; border-radius: 8px; font-family: inherit;
+      font-size: 0.85rem; font-weight: 500; cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    button:hover:not(:disabled) {
+      background: var(--gradient-brand); color: #ffffff;
+      border-color: var(--accent-2); box-shadow: 0 0 12px var(--accent-glow);
+    }
+    [data-theme="light"] button:hover:not(:disabled) {
+      background: var(--accent); color: #ffffff; border-color: var(--accent);
+      box-shadow: 0 1px 3px rgba(60,64,67,0.16);
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.secondary {
+      border-color: var(--border-subtle); color: var(--text-secondary); background: transparent;
+    }
+    button.secondary:hover:not(:disabled) {
+      background: var(--bg-card-hover); color: var(--text-heading);
+      border-color: var(--accent); box-shadow: none;
+    }
+    .toolbar .meta { font-size: 0.8rem; color: var(--text-muted); margin-left: auto; }
+
+    main { padding: 20px 24px; max-width: 1100px; margin: 0 auto; }
+
+    /* ---- Badge filter bar -------------------------------------- */
+    .badge-bar {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 10px 24px; border-bottom: 1px solid var(--border-section);
+      background: var(--bg-secondary);
+    }
+    .badge-filter {
+      cursor: pointer; user-select: none;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 1px solid var(--border-subtle);
+      background: transparent; color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .badge-filter:hover { color: var(--text-primary); border-color: var(--accent); }
+    .badge-filter.active {
+      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+    }
+
+    /* ---- Email cards ------------------------------------------- */
+    .empty {
+      text-align: center; padding: 80px 20px; color: var(--text-muted);
+    }
+    .empty h2 { color: var(--text-heading); font-weight: 500; margin-bottom: 8px; }
+
+    .email-list { display: grid; gap: 12px; }
+    .email {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 18px;
+      transition: all 0.18s ease;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: var(--header-blur);
+    }
+    .email:hover { background: var(--bg-card-hover); border-color: var(--accent); }
+    .email.processed { border-left: 3px solid var(--accent); }
+    .email.failed    { border-left: 3px solid var(--color-error); }
+
+    .email-header {
+      display: grid;
+      grid-template-columns: minmax(140px, 200px) 1fr auto auto;
+      gap: 14px; align-items: center;
+    }
+    .email-sender { color: var(--text-heading); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .email-subject { color: var(--text-primary); }
+    .email-subject .snippet { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+    .email-time { color: var(--text-muted); font-size: 0.8rem; font-family: var(--font-mono); white-space: nowrap; }
+
+    .email-body { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-section);
+                  display: grid; gap: 12px; animation: slidein 0.18s ease; }
+    @keyframes slidein { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+    .summary { color: var(--text-primary); line-height: 1.5; }
+
+    /* ---- Per-email badges (different from filter bar) ---------- */
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    .badge {
+      display: inline-block; padding: 2px 9px; border-radius: 12px;
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .badge-MEETING    { background: rgba(79,195,247,0.15);  color: var(--color-info); }
+    .badge-RISK       { background: rgba(239,83,80,0.18);   color: var(--color-error); }
+    .badge-EXTERNAL   { background: rgba(255,173,102,0.18); color: var(--color-warning); }
+    .badge-AUTOMATED  { background: rgba(129,129,177,0.18); color: var(--text-muted); }
+    .badge-VIP        { background: rgba(255,110,178,0.18); color: var(--accent-2); }
+    .badge-FOLLOW_UP  { background: rgba(165,112,255,0.18); color: var(--accent); }
+    .badge-NEWSLETTER { background: rgba(165,112,255,0.10); color: var(--text-secondary); }
+    .badge-FINANCE    { background: rgba(102,187,106,0.18); color: var(--color-success); }
+
+    /* ---- Structured CTAs --------------------------------------- */
+    .ctas-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .ctas { display: grid; gap: 8px; }
+    .cta {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px; align-items: start;
+      padding: 9px 12px;
+      border-radius: 8px;
+      background: var(--accent-dim);
+      border: 1px solid var(--border-subtle);
+    }
+    .cta-priority {
+      width: 4px; align-self: stretch; border-radius: 2px;
+      background: var(--text-muted);
+    }
+    .cta.priority-HIGH   .cta-priority { background: var(--color-error); }
+    .cta.priority-MEDIUM .cta-priority { background: var(--color-warning); }
+    .cta.priority-LOW    .cta-priority { background: var(--color-success); }
+
+    .cta-text     { color: var(--text-primary); line-height: 1.45; }
+    .cta-source   { color: var(--text-muted); font-size: 0.78rem; font-style: italic; margin-top: 4px; }
+    .cta-meta     { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; white-space: nowrap; }
+    .cta-type {
+      font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--accent); text-transform: uppercase;
+    }
+    .cta-due {
+      font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);
+      padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border-subtle);
+    }
+    .cta-due.overdue { color: var(--color-error); border-color: var(--color-error); }
+
+    .latency { font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+    /* ---- Loading state per row --------------------------------- */
+    .processing { color: var(--text-muted); font-size: 0.85rem; display: flex; gap: 8px; align-items: center; }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--accent-dim);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    footer {
+      padding: 24px; text-align: center; color: var(--text-muted);
+      font-size: 0.8rem; border-top: 1px solid var(--border-section); margin-top: 60px;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Intelli<span class="accent">Mailbox</span></h1>
+    <span class="spacer"></span>
+    <div class="theme-toggle" role="group" aria-label="Theme">
+      <button type="button" data-theme-value="intelliswarm" aria-pressed="true" title="Intelliswarm theme">✦ Intelliswarm</button>
+      <button type="button" data-theme-value="light" aria-pressed="false" title="Light theme">☀ Light</button>
+    </div>
+    <div class="status"><span class="dot"></span><span id="status-text">Idle</span></div>
+  </header>
+
+  <div class="toolbar">
+    <button id="btn-refresh">↻ Refresh inbox</button>
+    <span class="meta" id="meta">No inbox loaded yet</span>
+  </div>
+
+  <div class="badge-bar" id="badge-bar"></div>
+
+  <main>
+    <div id="empty" class="empty">
+      <h2>Welcome to IntelliMailbox</h2>
+      <p>
+        AI-preprocessed inbox on top of your real Gmail.<br>
+        Analysis runs locally by default — emails never leave your laptop.
+      </p>
+      <p style="margin-top:24px">
+        Sign in to Gmail in the Chrome window that opened, then click <b>↻ Refresh inbox</b>.
+      </p>
+    </div>
+    <div id="list" class="email-list"></div>
+  </main>
+
+  <footer>
+    Built with <a href="https://intelliswarm.ai">intelliswarm</a> · BrowserTool ⚙ + local LLM 🧠 · Analysis processing stays on your laptop
+  </footer>
+
+<script>
+// -------- Theme toggle ----------------------------------------------
+const THEME_KEY = 'intellimailbox-theme';
+function applyTheme(name) {
+  if (name === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    name = 'intelliswarm';
+  }
+  document.querySelectorAll('.theme-toggle button').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.themeValue === name ? 'true' : 'false');
+  });
+  try { localStorage.setItem(THEME_KEY, name); } catch (e) {}
+}
+(() => {
+  let saved = null;
+  try { saved = localStorage.getItem(THEME_KEY); } catch (e) {}
+  applyTheme(saved || 'intelliswarm');
+  document.querySelectorAll('.theme-toggle button').forEach(b => {
+    b.addEventListener('click', () => applyTheme(b.dataset.themeValue));
+  });
+})();
+
+// -------- App state -------------------------------------------------
+const ALL_BADGES = ['MEETING','RISK','EXTERNAL','AUTOMATED','VIP','FOLLOW_UP','NEWSLETTER','FINANCE'];
+const state = {
+  items: [],                    // InboxItem[]
+  enriched: {},                 // id → EnrichedEmail
+  filter: null,                 // active badge filter, or null
+  sse: null,                    // EventSource
+};
+
+const $ = (s) => document.querySelector(s);
+const list = $('#list');
+const empty = $('#empty');
+const statusText = $('#status-text');
+const meta = $('#meta');
+const btnRefresh = $('#btn-refresh');
+const badgeBar = $('#badge-bar');
+
+function setStatus(text, color) {
+  statusText.textContent = text;
+  document.querySelector('.status .dot').style.background = color || 'var(--color-success)';
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function renderBadgeBar() {
+  badgeBar.innerHTML = ALL_BADGES.map(b => {
+    const count = Object.values(state.enriched).filter(e =>
+      (e.badges || []).includes(b)).length;
+    const cls = state.filter === b ? 'badge-filter active' : 'badge-filter';
+    return `<span class="${cls}" data-badge="${b}">${b.replace('_',' ')}${count ? ` · ${count}` : ''}</span>`;
+  }).join('') +
+  (state.filter
+    ? `<span class="badge-filter" data-badge="">Clear filter ✕</span>`
+    : '');
+  badgeBar.querySelectorAll('.badge-filter').forEach(el => {
+    el.addEventListener('click', () => {
+      state.filter = el.dataset.badge || null;
+      renderBadgeBar();
+      renderList();
+    });
+  });
+}
+
+function dueLabel(iso) {
+  if (!iso) return '';
+  // YYYY-MM-DD comparison vs today (local)
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const overdue = iso < todayIso ? 'overdue' : '';
+  return `<span class="cta-due ${overdue}" title="${escapeHtml(iso)}">due ${escapeHtml(iso)}</span>`;
+}
+
+function renderCtas(ctas) {
+  if (!ctas || ctas.length === 0) return '';
+  return `
+    <div>
+      <div class="ctas-label">Action items</div>
+      <div class="ctas">
+        ${ctas.map(c => {
+          const pri = (c.priority || 'medium').toUpperCase();
+          const type = (c.type || 'OTHER').toUpperCase();
+          return `
+            <div class="cta priority-${pri}">
+              <div class="cta-priority"></div>
+              <div>
+                <div class="cta-text">${escapeHtml(c.text || '')}</div>
+                ${c.sourceQuote ? `<div class="cta-source">"${escapeHtml(c.sourceQuote)}"</div>` : ''}
+              </div>
+              <div class="cta-meta">
+                <span class="cta-type">${escapeHtml(type)}</span>
+                ${dueLabel(c.dueDate)}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function renderRow(item) {
+  const enriched = state.enriched[item.id];
+  let bodyHtml = '';
+  if (!enriched) {
+    bodyHtml = `<div class="email-body"><div class="processing"><div class="spinner"></div>Analyzing locally…</div></div>`;
+  } else if (enriched.failed) {
+    bodyHtml = `<div class="email-body"><div class="summary">⚠ ${escapeHtml(enriched.summary)}</div></div>`;
+  } else {
+    const badges = (enriched.badges || []).map(b =>
+      `<span class="badge badge-${b}">${b.replace('_',' ')}</span>`).join('');
+    bodyHtml = `
+      <div class="email-body">
+        ${badges ? `<div class="badges">${badges}</div>` : ''}
+        <div class="summary">${escapeHtml(enriched.summary || '')}</div>
+        ${renderCtas(enriched.ctas)}
+        <div class="latency">Analyzed in ${enriched.processedMs} ms</div>
+      </div>`;
+  }
+  const cls = enriched
+    ? (enriched.failed ? 'email failed' : 'email processed')
+    : 'email';
+  return `
+    <div class="${cls}" data-id="${item.id}">
+      <div class="email-header">
+        <span class="email-sender" title="${escapeHtml(item.sender)}">${escapeHtml(item.sender || '(unknown)')}</span>
+        <span class="email-subject">
+          ${escapeHtml(item.subject || '(no subject)')}
+          <span class="snippet">${escapeHtml(item.snippet || '')}</span>
+        </span>
+        <span class="email-time">${escapeHtml(item.time || '')}</span>
+        <button class="secondary" data-action="reprocess" data-id="${item.id}">↻</button>
+      </div>
+      ${bodyHtml}
+    </div>`;
+}
+
+function renderList() {
+  if (state.items.length === 0) {
+    empty.style.display = 'block';
+    list.innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+  let visible = state.items;
+  if (state.filter) {
+    visible = state.items.filter(i =>
+      (state.enriched[i.id]?.badges || []).includes(state.filter));
+  }
+  list.innerHTML = visible.map(renderRow).join('');
+  list.querySelectorAll('button[data-action="reprocess"]').forEach(b =>
+    b.addEventListener('click', () => reprocess(b.dataset.id)));
+}
+
+// -------- API ------------------------------------------------------
+async function refreshInbox() {
+  setStatus('Loading inbox…', 'var(--color-warning)');
+  btnRefresh.disabled = true;
+  try {
+    const t0 = Date.now();
+    const res = await fetch('/api/inbox');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    state.items = await res.json();
+    const stillProcessing = state.items.filter(i => !state.enriched[i.id]).length;
+    meta.textContent = `${state.items.length} email${state.items.length === 1 ? '' : 's'} · ` +
+                       `loaded in ${Date.now() - t0} ms` +
+                       (stillProcessing ? ` · ${stillProcessing} analyzing…` : '');
+    setStatus(stillProcessing ? 'Analyzing…' : 'Ready', stillProcessing ? 'var(--color-warning)' : 'var(--color-success)');
+    ensureSse();
+  } catch (e) {
+    meta.textContent = 'Error: ' + e.message;
+    setStatus('Error', 'var(--color-error)');
+  } finally {
+    btnRefresh.disabled = false;
+    renderList();
+    renderBadgeBar();
+  }
+}
+
+async function reprocess(id) {
+  // Optimistic UI: drop the cached enrichment so the row shows the spinner again.
+  delete state.enriched[id];
+  renderList();
+  renderBadgeBar();
+  try {
+    const res = await fetch(`/api/email/${encodeURIComponent(id)}/reprocess`, { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  } catch (e) {
+    console.warn('reprocess failed', e);
+  }
+}
+
+function ensureSse() {
+  if (state.sse) return;
+  const sse = new EventSource('/api/inbox/stream');
+  sse.addEventListener('email', (evt) => {
+    try {
+      const enriched = JSON.parse(evt.data);
+      const id = enriched.item?.id;
+      if (!id) return;
+      state.enriched[id] = enriched;
+      // Update only the affected row + the badge bar.
+      renderList();
+      renderBadgeBar();
+      const remaining = state.items.filter(i => !state.enriched[i.id]).length;
+      if (remaining === 0) {
+        setStatus('Ready', 'var(--color-success)');
+        meta.textContent = `${state.items.length} email${state.items.length === 1 ? '' : 's'} · all analyzed`;
+      } else {
+        meta.textContent = `${state.items.length} emails · ${remaining} still analyzing…`;
+      }
+    } catch (e) { /* malformed event, skip */ }
+  });
+  sse.onerror = () => {
+    // Browser auto-reconnects with built-in backoff; we don't tear down on transient errors.
+    setStatus('Reconnecting…', 'var(--color-warning)');
+  };
+  state.sse = sse;
+}
+
+btnRefresh.addEventListener('click', refreshInbox);
+// Auto-connect SSE on load so any cached enrichments from a prior session show up.
+ensureSse();
+renderBadgeBar();
+</script>
+</body>
+</html>
