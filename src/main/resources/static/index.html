@@ -322,6 +322,18 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Streaming cursor — blinks at end of summary text while tokens arrive. */
+    .stream-cursor {
+      display: inline-block;
+      width: 6px; height: 1.05em;
+      background: var(--accent);
+      vertical-align: text-bottom;
+      margin-left: 2px;
+      animation: blink 0.9s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .email.streaming { border-left: 3px solid var(--accent); }
+
     footer {
       padding: 24px; text-align: center; color: var(--text-muted);
       font-size: 0.8rem; border-top: 1px solid var(--border-section); margin-top: 60px;
@@ -396,6 +408,10 @@ const FILTER_KEY = 'intellimailbox-filter';
 const state = {
   items: [],                    // InboxItem[]
   enriched: {},                 // id → EnrichedEmail
+  // Mid-stream summary text per email — discarded once the final `email` event lands.
+  // Lets the UI render summary text appearing word-by-word before the structured pass
+  // (badges/ctas/drafts) finishes.
+  streaming: {},                // id → { text: "summary so far" }
   // Filter persists across hard-refresh via localStorage. Server cache + SSE replay
   // restore items+enrichments on its own — this just keeps the user's chosen view.
   filter: (() => { try { return localStorage.getItem(FILTER_KEY) || null; } catch (e) { return null; } })(),
@@ -557,8 +573,16 @@ function wireDraftHandlers() {
 
 function renderRow(item) {
   const enriched = state.enriched[item.id];
+  const streaming = state.streaming[item.id];
   let bodyHtml = '';
-  if (!enriched) {
+  if (!enriched && streaming) {
+    // Mid-stream: summary materialising. Structured fields (badges/ctas/drafts)
+    // arrive when the final `email` event lands.
+    bodyHtml = `
+      <div class="email-body">
+        <div class="summary">${escapeHtml(streaming.text)}<span class="stream-cursor"></span></div>
+      </div>`;
+  } else if (!enriched) {
     bodyHtml = `<div class="email-body"><div class="processing"><div class="spinner"></div>Analyzing locally…</div></div>`;
   } else if (enriched.failed) {
     bodyHtml = `<div class="email-body"><div class="summary">⚠ ${escapeHtml(enriched.summary)}</div></div>`;
@@ -576,7 +600,7 @@ function renderRow(item) {
   }
   const cls = enriched
     ? (enriched.failed ? 'email failed' : 'email processed')
-    : 'email';
+    : (streaming ? 'email streaming' : 'email');
   return `
     <div class="${cls}" data-id="${item.id}">
       <div class="email-header">
@@ -636,8 +660,10 @@ async function refreshInbox() {
 }
 
 async function reprocess(id) {
-  // Optimistic UI: drop the cached enrichment so the row shows the spinner again.
+  // Optimistic UI: drop the cached enrichment AND any stale partial-streaming
+  // text so the row shows the spinner again, then a fresh stream when it arrives.
   delete state.enriched[id];
+  delete state.streaming[id];
   renderList();
   renderBadgeBar();
   try {
@@ -651,12 +677,30 @@ async function reprocess(id) {
 function ensureSse() {
   if (state.sse) return;
   const sse = new EventSource('/api/inbox/stream');
+
+  // Token-level streaming: each delta updates state.streaming[id] and re-renders
+  // the affected row. Discarded once the terminal `email` event lands.
+  sse.addEventListener('summary_delta', (evt) => {
+    try {
+      const data = JSON.parse(evt.data);
+      const id = data.emailId;
+      if (!id) return;
+      let s = state.streaming[id];
+      if (!s) s = state.streaming[id] = { text: '' };
+      s.text += data.text;
+      renderList();
+    } catch (e) { /* malformed — skip */ }
+  });
+
   sse.addEventListener('email', (evt) => {
     try {
       const enriched = JSON.parse(evt.data);
       const id = enriched.item?.id;
       if (!id) return;
       state.enriched[id] = enriched;
+      // Streaming for this id is done — drop the partial text so the next
+      // re-render uses the final EnrichedEmail.
+      delete state.streaming[id];
       // Re-add the inbox row in case this was a replay after a hard refresh
       // (state.items would otherwise still be empty).
       ensureItemListed(enriched.item);

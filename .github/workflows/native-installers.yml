@@ -88,10 +88,10 @@ jobs:
 
       - name: Build fat-jar + native installer
         shell: bash
-        # The OS-matching profile (win/mac/linux-installer) is auto-activated by
-        # the pom, so a single `mvn package` runs Spring Boot's repackage AND
-        # jpackage in sequence, leaving the installer at target/installers/.
-        run: mvn -B -ntp clean package -DskipTests
+        # The OS-matching installer profile activates only when -Dinstaller is
+        # passed (so dev boxes without WiX/etc. don't trip on plain mvn install).
+        # Here in CI we want it on, so:
+        run: mvn -B -ntp clean package -DskipTests -Dinstaller=true
 
       - name: List built installer
         shell: bash

@@ -30,7 +30,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.4.4</spring-boot.version>
         <spring-ai.version>1.0.4</spring-ai.version>
-        <swarmai.version>1.0.16</swarmai.version>
+        <swarmai.version>1.0.18-SNAPSHOT</swarmai.version>
     </properties>
 
     <dependencyManagement>
@@ -181,7 +181,12 @@
     <profiles>
         <profile>
             <id>win-installer</id>
-            <activation><os><family>windows</family></os></activation>
+            <!-- Explicit-opt-in: pass -Dinstaller. Don't auto-fire on plain `mvn install`
+                 from a dev box (WiX may not be installed locally). CI passes -Dinstaller. -->
+            <activation>
+                <property><name>installer</name></property>
+                <os><family>windows</family></os>
+            </activation>
             <build>
                 <plugins>
                     <plugin>
@@ -225,7 +230,10 @@
 
         <profile>
             <id>mac-installer</id>
-            <activation><os><family>mac</family></os></activation>
+            <activation>
+                <property><name>installer</name></property>
+                <os><family>mac</family></os>
+            </activation>
             <build>
                 <plugins>
                     <plugin>
@@ -274,7 +282,10 @@
 
         <profile>
             <id>linux-installer</id>
-            <activation><os><family>unix</family><name>linux</name></os></activation>
+            <activation>
+                <property><name>installer</name></property>
+                <os><family>unix</family><name>linux</name></os>
+            </activation>
             <build>
                 <plugins>
                     <plugin>

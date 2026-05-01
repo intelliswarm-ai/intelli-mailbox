@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,9 +24,14 @@ import java.util.function.Consumer;
  *   <li>BrowserTool drives one Chrome page so we MUST process serially. Single-thread executor.</li>
  *   <li>Results land in an in-memory cache keyed by {@link InboxItem#id}. Refreshes that re-list
  *       the same id reuse the cached result — the user doesn't pay LLM cost twice.</li>
- *   <li>Subscribers (one per SSE client) receive each {@link EnrichedEmail} as it lands, plus
- *       a replay of everything already cached when they first connect.</li>
+ *   <li>Subscribers (one per SSE client) receive each {@link PipelineEvent} as it lands —
+ *       many {@link PipelineEvent.SummaryDelta} per email while the LLM streams the prose
+ *       summary, then a single terminal {@link PipelineEvent.Enriched} carrying the full
+ *       {@link EnrichedEmail}. On reconnect, the cache is replayed as
+ *       {@code Enriched} events so a late-arriving client catches up.</li>
  * </ul>
+ *
+ * @since 1.1.0  (was {@code Consumer<EnrichedEmail>} subscribers in 1.0.x)
  */
 @Service
 public class PreprocessingPipeline {
@@ -45,8 +51,8 @@ public class PreprocessingPipeline {
     /** Cache of already-enriched emails by inbox-position id. */
     private final Map<String, EnrichedEmail> cache = new ConcurrentHashMap<>();
 
-    /** Live SSE subscribers — receive every newly enriched email. */
-    private final List<Consumer<EnrichedEmail>> subscribers = new CopyOnWriteArrayList<>();
+    /** Live SSE subscribers — receive every {@link PipelineEvent} (deltas + final). */
+    private final List<Consumer<PipelineEvent>> subscribers = new CopyOnWriteArrayList<>();
 
     /** Tracks which ids currently have an enrichment job in-flight, to avoid duplicate queueing. */
     private final Map<String, AtomicBoolean> inFlight = new ConcurrentHashMap<>();
@@ -83,8 +89,8 @@ public class PreprocessingPipeline {
         return Map.copyOf(cache);
     }
 
-    public void subscribe(Consumer<EnrichedEmail> sink) { subscribers.add(sink); }
-    public void unsubscribe(Consumer<EnrichedEmail> sink) { subscribers.remove(sink); }
+    public void subscribe(Consumer<PipelineEvent> sink) { subscribers.add(sink); }
+    public void unsubscribe(Consumer<PipelineEvent> sink) { subscribers.remove(sink); }
 
     private void queueEnrichment(InboxItem item) {
         AtomicBoolean lease = inFlight.computeIfAbsent(item.id(), k -> new AtomicBoolean(false));
@@ -94,22 +100,32 @@ public class PreprocessingPipeline {
         worker.submit(() -> {
             try {
                 String body = reader.readEmail(item.id());
-                EnrichedEmail enriched = enrichment.enrich(item, body);
-                cache.put(item.id(), enriched);
-                publish(enriched);
+                // Subscribe synchronously and block until the Flux completes —
+                // the worker is single-threaded by design, and we want each
+                // email's events fully delivered before the next one starts.
+                // SummaryDelta events forward straight to subscribers; the
+                // terminal Enriched event also lands in the cache.
+                enrichment.enrichStreaming(item, body)
+                        .doOnNext(evt -> {
+                            if (evt instanceof PipelineEvent.Enriched e) {
+                                cache.put(item.id(), e.email());
+                            }
+                            publish(evt);
+                        })
+                        .blockLast(Duration.ofMinutes(10));
             } catch (Throwable t) {
                 logger.warn("Pipeline: unexpected failure for id={}: {}", item.id(), t.toString());
                 EnrichedEmail failed = EnrichedEmail.failed(item, t.getClass().getSimpleName(), 0L);
                 cache.put(item.id(), failed);
-                publish(failed);
+                publish(new PipelineEvent.Enriched(item.id(), failed));
             } finally {
                 lease.set(false);
             }
         });
     }
 
-    private void publish(EnrichedEmail e) {
-        for (Consumer<EnrichedEmail> sub : subscribers) {
+    private void publish(PipelineEvent e) {
+        for (Consumer<PipelineEvent> sub : subscribers) {
             try { sub.accept(e); } catch (Throwable t) {
                 logger.debug("Pipeline: subscriber threw, removing — {}", t.toString());
                 subscribers.remove(sub);

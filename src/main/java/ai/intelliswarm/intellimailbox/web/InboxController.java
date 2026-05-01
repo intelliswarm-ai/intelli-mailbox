@@ -2,6 +2,7 @@ package ai.intelliswarm.intellimailbox.web;
 
 import ai.intelliswarm.intellimailbox.enrichment.EnrichedEmail;
 import ai.intelliswarm.intellimailbox.pipeline.InboxItem;
+import ai.intelliswarm.intellimailbox.pipeline.PipelineEvent;
 import ai.intelliswarm.intellimailbox.pipeline.PreprocessingPipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,9 +58,18 @@ public class InboxController {
         // of 30s would prematurely tear down a healthy stream.
         SseEmitter emitter = new SseEmitter(0L);
 
-        Consumer<EnrichedEmail> sink = e -> {
+        // Maps PipelineEvent subtypes onto SSE event names — frontend listens with
+        // addEventListener('summary_delta', …) / ('email', …).
+        Consumer<PipelineEvent> sink = e -> {
             try {
-                emitter.send(SseEmitter.event().name("email").data(e));
+                switch (e) {
+                    case PipelineEvent.SummaryDelta d ->
+                            emitter.send(SseEmitter.event().name("summary_delta").data(d));
+                    case PipelineEvent.Enriched x ->
+                            // Wire the EnrichedEmail directly so frontends that key
+                            // off { id, summary, badges, … } don't need to unwrap.
+                            emitter.send(SseEmitter.event().name("email").data(x.email()));
+                }
             } catch (IOException io) {
                 emitter.completeWithError(io);
             }
@@ -71,7 +81,10 @@ public class InboxController {
         emitter.onTimeout(cleanup);
         emitter.onError(t -> cleanup.run());
 
-        // Replay everything already cached so a late-arriving client sees the full state.
+        // Replay everything already cached as `email` events so a late-arriving
+        // client catches up. Cached entries have full summary text already, so
+        // we don't replay synthetic SummaryDelta events for them — the UI just
+        // renders the final card directly.
         Map<String, EnrichedEmail> snap = pipeline.snapshot();
         for (EnrichedEmail e : snap.values()) {
             try {

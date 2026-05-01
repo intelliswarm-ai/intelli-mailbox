@@ -1,7 +1,9 @@
 package ai.intelliswarm.intellimailbox.enrichment;
 
 import ai.intelliswarm.intellimailbox.pipeline.InboxItem;
+import ai.intelliswarm.intellimailbox.pipeline.PipelineEvent;
 import ai.intelliswarm.swarmai.agent.Agent;
+import ai.intelliswarm.swarmai.agent.streaming.AgentEvent;
 import ai.intelliswarm.swarmai.task.Task;
 import ai.intelliswarm.swarmai.task.output.TaskOutput;
 import org.slf4j.Logger;
@@ -9,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -141,6 +145,208 @@ public class EnrichmentService {
                 drafts,
                 elapsed,
                 false);
+    }
+
+    // -----------------------------------------------------------------------
+    // Streaming variant — same pipeline, but the per-email summary is delivered
+    // token-by-token while the structured/draft passes run in the background.
+    // -----------------------------------------------------------------------
+
+    /**
+     * Streaming variant of {@link #enrich(InboxItem, String)}. Returns a
+     * {@link Flux} of {@link PipelineEvent}s:
+     *
+     * <ol>
+     *   <li>Many {@link PipelineEvent.SummaryDelta} as the LLM streams the prose summary.</li>
+     *   <li>Exactly one terminal {@link PipelineEvent.Enriched} with the fully-built
+     *       {@link EnrichedEmail} (summary + badges + ctas + drafts).</li>
+     * </ol>
+     *
+     * <p>Total LLM work is comparable to the non-streaming path: a streaming summary
+     * pass replaces the summary slot in what was the combined first call, then the
+     * structured-fields pass uses the already-known summary as context (so the LLM
+     * doesn't waste tokens regenerating it). Drafts pass behaves identically.
+     *
+     * <p>Errors are NEVER signalled via {@code onError} — they materialise as a
+     * terminal {@link PipelineEvent.Enriched} carrying an {@link EnrichedEmail#failed}.
+     * The Flux always completes normally so SSE consumers can keep their subscribe
+     * lambda small (no error handler).
+     *
+     * @since 1.1.0
+     */
+    public Flux<PipelineEvent> enrichStreaming(InboxItem item, String emailBody) {
+        long t0 = System.currentTimeMillis();
+        if (emailBody == null || emailBody.isBlank()) {
+            EnrichedEmail empty = new EnrichedEmail(item,
+                    "(empty email body — nothing to analyze)",
+                    List.of(), List.of(), false, false, null, 0L, false);
+            return Flux.just(new PipelineEvent.Enriched(item.id(), empty));
+        }
+
+        // ---- pass 1: stream the prose summary ---------------------------------
+        StringBuilder summaryAccum = new StringBuilder();
+        Task summaryTask = Task.builder()
+                .description(buildStreamingSummaryPrompt(item, emailBody))
+                .expectedOutput("A 1–2 sentence prose summary, no JSON, no markdown")
+                .agent(enrichmentAgent)
+                .build();
+
+        Flux<PipelineEvent> deltas = enrichmentAgent
+                .executeTaskStreaming(summaryTask, java.util.List.of())
+                .filter(evt -> evt instanceof AgentEvent.TextDelta)
+                .map(evt -> ((AgentEvent.TextDelta) evt).text())
+                .doOnNext(summaryAccum::append)
+                .map(text -> (PipelineEvent) new PipelineEvent.SummaryDelta(item.id(), text))
+                .onErrorResume(err -> {
+                    logger.warn("EnrichmentService: summary stream failed for id={}: {}",
+                            item.id(), err.getMessage());
+                    return Flux.empty();
+                });
+
+        // ---- passes 2 + 3: structured fields, then drafts (if needsReply) ----
+        // Mono is invariant in its type param, so we widen via .<PipelineEvent>fromSupplier.
+        Mono<PipelineEvent> finalize = Mono.<PipelineEvent>fromSupplier(() -> {
+            String summary = summaryAccum.toString();
+            EnrichedEmail finalEmail = runStructuredAndDrafts(item, emailBody, summary, t0);
+            return new PipelineEvent.Enriched(item.id(), finalEmail);
+        }).onErrorResume(err -> {
+            long elapsed = System.currentTimeMillis() - t0;
+            logger.warn("EnrichmentService: structured pass failed for id={}: {}",
+                    item.id(), err.getMessage());
+            return Mono.just(new PipelineEvent.Enriched(item.id(),
+                    EnrichedEmail.failed(item, err.getClass().getSimpleName(), elapsed)));
+        });
+
+        return Flux.concat(deltas, finalize);
+    }
+
+    /**
+     * Runs the structured-fields LLM call and (if needed) the drafts pass.
+     * Mirrors {@link #enrich(InboxItem, String)}'s second-half logic exactly,
+     * but uses the {@code knownSummary} that the streaming pass produced so the
+     * LLM doesn't waste tokens regenerating prose that's already on the wire.
+     */
+    private EnrichedEmail runStructuredAndDrafts(InboxItem item, String emailBody,
+                                                  String knownSummary, long t0) {
+        Task task = Task.builder()
+                .description(buildStructuredOnlyPrompt(item, emailBody, knownSummary))
+                .expectedOutput("EnrichmentResult JSON with badges[], ctas[], phishingSuspected, needsReply (summary already known)")
+                .outputType(EnrichmentResult.class)
+                .agent(enrichmentAgent)
+                .build();
+
+        EnrichmentResult result;
+        try {
+            TaskOutput out = enrichmentAgent.executeTask(task, java.util.List.of());
+            result = out.as(EnrichmentResult.class);
+            if (result == null) {
+                long elapsed = System.currentTimeMillis() - t0;
+                return EnrichedEmail.failed(item, "structured pass: unparseable JSON", elapsed);
+            }
+        } catch (Exception e) {
+            long elapsed = System.currentTimeMillis() - t0;
+            return EnrichedEmail.failed(item,
+                    e.getClass().getSimpleName() + ": " + e.getMessage(), elapsed);
+        }
+
+        List<Badge> badges = parseBadges(result.badges);
+        List<Cta> ctas = filterTruthful(normalizeCtas(result.ctas), emailBody);
+
+        boolean needsReply = Boolean.TRUE.equals(result.needsReply)
+                && !badges.contains(Badge.AUTOMATED)
+                && !badges.contains(Badge.NEWSLETTER);
+        if (needsReply && ctas.stream().noneMatch(c -> "REPLY".equals(c.type())
+                || "OTHER".equals(c.type())
+                || "REVIEW".equals(c.type())
+                || "SCHEDULE".equals(c.type()))) {
+            needsReply = false;
+        }
+
+        ReplyDrafts drafts = needsReply
+                ? draftReplies(item, emailBody, knownSummary)
+                : null;
+
+        long elapsed = System.currentTimeMillis() - t0;
+        return new EnrichedEmail(
+                item,
+                knownSummary,
+                badges,
+                ctas,
+                Boolean.TRUE.equals(result.phishingSuspected),
+                needsReply,
+                drafts,
+                elapsed,
+                false);
+    }
+
+    /** Streaming-summary prompt — plain prose only, no JSON, no preamble. */
+    private static String buildStreamingSummaryPrompt(InboxItem item, String emailBody) {
+        return """
+                Read this email and write a single 1–2 sentence summary in plain prose.
+                No JSON, no markdown, no preamble — just the summary text.
+                Don't invent senders, dates, links or amounts that aren't in the body.
+
+                EMAIL METADATA:
+                  From:    %s
+                  Subject: %s
+                  Time:    %s
+
+                EMAIL BODY:
+                %s
+                """.formatted(
+                        nullToDash(item.sender()),
+                        nullToDash(item.subject()),
+                        nullToDash(item.time()),
+                        truncate(emailBody, 4000));
+    }
+
+    /** Structured-fields prompt — same as {@link #buildPrompt} but tells the LLM the summary is already known. */
+    private static String buildStructuredOnlyPrompt(InboxItem item, String emailBody, String knownSummary) {
+        return """
+                You are an executive assistant. Extract structured fields for ONE email.
+                The summary is ALREADY KNOWN (provided below for context only — do not regenerate it).
+                Return a JSON object with badges, ctas, phishingSuspected, and needsReply.
+                Leave the summary field empty.
+
+                Output rules:
+                - badges: subset of [MEETING, RISK, EXTERNAL, AUTOMATED, VIP, FOLLOW_UP, NEWSLETTER, FINANCE].
+                  Calibration:
+                    MEETING     → calendar invites, scheduling discussion, accept/decline.
+                    RISK        → phishing, scam, impersonation, urgent-credentials warning.
+                    EXTERNAL    → from outside your org / vendor / recruiter / personal contact.
+                    AUTOMATED   → no-reply, system, build/CI/Dependabot/security-scan, transactional.
+                    VIP         → from or about a senior exec, key customer, high-priority contact.
+                    FOLLOW_UP   → expects a reply, ping, RSVP, application.
+                    NEWSLETTER  → marketing/digest/promo. NOT job alerts, NOT calendar invites,
+                                  NOT GitHub alerts — those are EXTERNAL or AUTOMATED.
+                    FINANCE     → invoice, receipt, banking, market report, payment.
+                - ctas: list of concrete action items. Empty list if informational only.
+                  Each cta: text (≤200 chars), dueDate (ISO 8601 or null), type (one of
+                  [REPLY, REVIEW, SCHEDULE, PAY, SUBMIT, READ, OTHER]), priority
+                  (one of [LOW, MEDIUM, HIGH]), sourceQuote (≤120-char verbatim excerpt).
+                - phishingSuspected: true ONLY for genuine phishing/impersonation/urgent-credentials scam.
+                - needsReply: true ONLY if a human response is genuinely warranted
+                  (direct question, ask for review/decision, calendar invite, recruiter outreach).
+                  false for newsletters, marketing, automated alerts, no-reply transactional, FYI broadcasts.
+
+                EMAIL METADATA:
+                  From:    %s
+                  Subject: %s
+                  Time:    %s
+                  Snippet: %s
+
+                ALREADY-KNOWN SUMMARY (context only — leave the summary field empty in your response):
+                %s
+
+                EMAIL BODY:
+                %s
+                """.formatted(
+                        nullToDash(item.sender()),
+                        nullToDash(item.subject()),
+                        nullToDash(item.time()),
+                        nullToDash(item.snippet()),
+                        nullToDash(knownSummary),
+                        truncate(emailBody, 4000));
     }
 
     /**
