@@ -61,7 +61,13 @@ if [ -z "${SWARMAI_TOOLS_BROWSER_USER_DATA_DIR:-}" ]; then
   USER_DATA_DIR_ARG="--swarmai.tools.browser.user-data-dir=$PROFILE_DIR"
 fi
 
-exec $MVN -q -DskipTests spring-boot:run \
+echo "==== [run.sh] launch summary ===================================="
+echo "  CHROME_PATH    : ${SWARMAI_TOOLS_BROWSER_CHROME_PATH:-(unset, will auto-detect)}"
+echo "  USER_DATA_DIR  : ${SWARMAI_TOOLS_BROWSER_USER_DATA_DIR:-$PROFILE_DIR}"
+echo "  PROFILE        : $SPRING_PROFILES_ACTIVE"
+echo "================================================================="
+
+exec $MVN -DskipTests spring-boot:run \
     -Dspring-boot.run.arguments="\
 --swarmai.tools.browser.enabled=true \
 $USER_DATA_DIR_ARG \
