@@ -1,5 +1,5 @@
 # ============================================================================
-# IntelliMailbox — defaults
+# Intelli-mailbox — defaults
 # ============================================================================
 # Privacy-by-default: local Ollama, web on :8090, BrowserTool attached to a
 # real Chrome via CDP so Google's signin flow accepts us.

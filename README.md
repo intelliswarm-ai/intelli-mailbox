@@ -1,4 +1,4 @@
-# IntelliMailbox
+# Intelli-mailbox
 
 > AI-preprocessed inbox on top of your real Gmail. Local LLM by default — emails never leave your laptop.
 
@@ -21,7 +21,7 @@ A Spring Boot web app that reads your Gmail through a CDP-attached real Chrome, 
 On first run:
 1. The app launches a dedicated Chrome at `~/.intelliswarm/intellimailbox-chrome`.
 2. Sign in to Gmail in that Chrome window.
-3. The IntelliMailbox UI auto-opens at `http://localhost:8090/` in a new tab.
+3. The Intelli-mailbox UI auto-opens at `http://localhost:8090/` in a new tab.
 4. Click **↻ Refresh inbox**. The inbox listing renders immediately; badges and CTAs stream in as each email is analyzed.
 
 To use OpenAI instead of local Ollama:
@@ -37,7 +37,7 @@ flowchart LR
         UI[Browser at :8090]
     end
 
-    subgraph App["IntelliMailbox (Spring Boot)"]
+    subgraph App["Intelli-mailbox (Spring Boot)"]
         Ctrl[InboxController<br/>/api/inbox<br/>/api/inbox/stream]
         Pipeline[PreprocessingPipeline<br/>single-thread queue<br/>+ in-memory cache]
         Reader[EmailReader<br/>BrowserTool wrapper]

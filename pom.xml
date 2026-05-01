@@ -12,7 +12,7 @@
     <version>0.1.0</version>
     <packaging>jar</packaging>
 
-    <name>IntelliMailbox</name>
+    <name>Intelli-mailbox</name>
     <description>AI-preprocessed mailbox: badges + structured CTAs, local-by-default.</description>
 
     <licenses>
@@ -199,7 +199,7 @@
                                 <phase>package</phase>
                                 <goals><goal>jpackage</goal></goals>
                                 <configuration>
-                                    <name>IntelliMailbox</name>
+                                    <name>Intelli-mailbox</name>
                                     <appVersion>${project.version}</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
@@ -246,7 +246,7 @@
                                 <phase>package</phase>
                                 <goals><goal>jpackage</goal></goals>
                                 <configuration>
-                                    <name>IntelliMailbox</name>
+                                    <name>Intelli-mailbox</name>
                                     <!-- macOS quirk: CFBundleShortVersionString rejects a leading-zero
                                          version (0.1.0 → "first number cannot be zero or negative"),
                                          so the .dmg gets its own appVersion. The actual jar still
@@ -267,7 +267,7 @@
                                     <licenseFile>${project.basedir}/LICENSE</licenseFile>
                                     <type>DMG</type>
                                     <macPackageIdentifier>ai.intelliswarm.intellimailbox</macPackageIdentifier>
-                                    <macPackageName>IntelliMailbox</macPackageName>
+                                    <macPackageName>Intelli-mailbox</macPackageName>
                                     <javaOptions>
                                         <option>-Xmx1g</option>
                                         <option>-Dfile.encoding=UTF-8</option>

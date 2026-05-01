@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>IntelliMailbox — AI-preprocessed inbox</title>
+  <title>Intelli-mailbox — AI-preprocessed inbox</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -611,6 +611,84 @@
       margin-top: 14px; font-size: 0.78rem; color: var(--text-muted); text-align: right;
     }
 
+    /* ---- Email detail modal ----------------------------------- */
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 90;
+      background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      animation: fadein 0.15s ease;
+      padding: 24px;
+    }
+    .modal-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      max-width: 880px; width: 100%;
+      max-height: 90vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+      overflow: hidden;
+      animation: slidein 0.2s ease;
+    }
+    .modal-head {
+      padding: 18px 24px 14px 24px;
+      border-bottom: 1px solid var(--border-section);
+      display: grid; gap: 6px;
+    }
+    .modal-head .modal-sender { font-size: 0.85rem; color: var(--text-muted); }
+    .modal-head .modal-subject {
+      font-size: 1.15rem; font-weight: 600; color: var(--text-heading);
+      line-height: 1.35;
+    }
+    .modal-head .modal-meta {
+      display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+      font-size: 0.78rem; color: var(--text-muted);
+    }
+    .modal-close {
+      all: unset; cursor: pointer;
+      position: absolute; top: 28px; right: 30px;
+      font-size: 1.4rem; color: var(--text-muted);
+      width: 32px; height: 32px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background 0.15s, color 0.15s;
+    }
+    .modal-close:hover { background: var(--bg-card-hover); color: var(--text-heading); }
+
+    .modal-body {
+      padding: 18px 24px;
+      overflow: auto;
+      display: grid; gap: 16px;
+    }
+    .modal-section h4 {
+      margin: 0 0 8px 0; font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+    }
+    .modal-summary {
+      color: var(--text-primary); line-height: 1.55;
+      padding: 10px 14px; border-radius: 8px;
+      background: var(--accent-dim);
+    }
+    .modal-fullbody {
+      color: var(--text-primary); line-height: 1.55;
+      max-height: 320px; overflow: auto;
+      padding: 12px 14px;
+      border: 1px solid var(--border-subtle); border-radius: 8px;
+      background: var(--bg-input);
+      white-space: pre-wrap; word-wrap: break-word;
+      font-size: 0.88rem;
+    }
+    .modal-loading {
+      text-align: center; color: var(--text-muted); padding: 60px 20px;
+    }
+
+    /* Make whole row clickable, including digest rows. The reprocess and
+       inject buttons stop propagation to keep their own click semantics. */
+    .email .email-header { cursor: pointer; }
+    .email-header .email-sender, .email-header .email-subject { pointer-events: none; }
+    .email-header button { pointer-events: auto; }
+    .cta { cursor: pointer; }
+    .cta .cta-done-btn { cursor: pointer; }
+
     footer {
       padding: 24px; text-align: center; color: var(--text-muted);
       font-size: 0.8rem; border-top: 1px solid var(--border-section); margin-top: 60px;
@@ -621,7 +699,7 @@
 </head>
 <body>
   <header>
-    <h1>Intelli<span class="accent">Mailbox</span></h1>
+    <h1>Intelli<span class="accent">-mailbox</span></h1>
     <span class="spacer"></span>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-value="intelliswarm" aria-pressed="true" title="Intelliswarm theme">✦ Intelliswarm</button>
@@ -649,7 +727,7 @@
 
   <main>
     <div id="empty" class="empty">
-      <h2>Welcome to IntelliMailbox</h2>
+      <h2>Welcome to Intelli-mailbox</h2>
       <p>
         AI-preprocessed inbox on top of your real Gmail.<br>
         Analysis runs locally by default — emails never leave your laptop.
@@ -662,6 +740,8 @@
     <div id="list" class="email-list"></div>
     <div id="digest" class="digest" style="display:none"></div>
   </main>
+  <div id="modal-mount"></div>
+  <div id="help-mount"></div>
 
   <footer>
     Built with <a href="https://intelliswarm.ai">intelliswarm</a> · BrowserTool ⚙ + local LLM 🧠 · Analysis processing stays on your laptop
@@ -1112,13 +1192,17 @@ function renderRow(item) {
   } else {
     const badges = (enriched.badges || []).map(b =>
       `<span class="badge badge-${b}">${b.replace('_',' ')}</span>`).join('');
+    const conf = confidenceFor(item, enriched);
+    const confChip = conf === 'low'
+      ? `<span class="confidence-low" title="The summary's keywords don't overlap much with this email's subject/sender. Click ↻ to re-analyze if it looks unrelated.">⚠ verify</span>`
+      : '';
     bodyHtml = `
       <div class="email-body">
-        ${badges ? `<div class="badges">${badges}</div>` : ''}
+        ${badges ? `<div class="badges">${badges}${confChip}</div>` : confChip}
         <div class="summary">${escapeHtml(enriched.summary || '')}</div>
-        ${renderCtas(enriched.ctas)}
+        ${renderCtas(enriched.ctas, item.id)}
         ${enriched.needsReply ? renderDrafts(item.id, enriched.replyDrafts) : ''}
-        <div class="latency">Analyzed in ${enriched.processedMs} ms${enriched.needsReply ? ' · drafts ready' : ''}</div>
+        <div class="latency">Analyzed in ${enriched.processedMs} ms${enriched.needsReply ? ' · drafts ready' : ''}${enriched.phishingSuspected ? ' · ⚠ phishing flagged' : ''}</div>
       </div>`;
   }
   const cls = enriched
@@ -1205,8 +1289,16 @@ function renderList() {
   }
   list.innerHTML = visible.map(renderRow).join('');
   list.querySelectorAll('button[data-action="reprocess"]').forEach(b =>
-    b.addEventListener('click', () => reprocess(b.dataset.id)));
+    b.addEventListener('click', (ev) => { ev.stopPropagation(); reprocess(b.dataset.id); }));
+  // Click anywhere on a row's header opens the modal. Interactive children
+  // (reprocess button, draft tabs, copy/inject, CTA done) stop propagation.
+  list.querySelectorAll('.email .email-header').forEach(h => {
+    const id = h.parentElement.dataset.id;
+    h.addEventListener('click', () => openEmailModal(id));
+  });
   wireDraftHandlers(list);
+  wireCtaHandlers(list);
+  applySearchFilter();
 }
 
 // -------- Digest view ----------------------------------------------
@@ -1292,6 +1384,12 @@ function renderDigest() {
       jumpToInboxRow(el.dataset.jumpId);
     });
   });
+  digestEl.querySelectorAll('[data-open-modal-id]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openEmailModal(el.dataset.openModalId);
+    });
+  });
   digestEl.querySelectorAll('.digest-row[data-expand-key]').forEach(row => {
     row.addEventListener('click', (e) => {
       // Don't toggle if the click landed on something interactive inside the
@@ -1306,8 +1404,10 @@ function renderDigest() {
       renderDigest();
     });
   });
-  // Wire draft handlers for any inline-expanded panels.
+  // Wire draft + CTA handlers for any inline-expanded panels, then apply search.
   wireDraftHandlers(digestEl);
+  wireCtaHandlers(digestEl);
+  applySearchFilter();
 }
 
 function renderDigestSection(badge, entries, todayIso) {
@@ -1331,12 +1431,12 @@ function renderDigestSection(badge, entries, todayIso) {
     const expandedHtml = isExpanded ? `
       <div class="digest-expanded" data-row="${escapeHtml(item.id)}">
         <div class="summary">${escapeHtml(enriched.summary || '')}</div>
-        ${renderCtas(enriched.ctas)}
+        ${renderCtas(enriched.ctas, item.id)}
         ${enriched.needsReply ? renderDrafts(item.id, enriched.replyDrafts) : ''}
         <div style="display:flex;gap:8px;align-items:center">
           <span class="latency">Analyzed in ${enriched.processedMs} ms</span>
           <span class="spacer" style="flex:1"></span>
-          <button class="section-link" data-jump-id="${escapeHtml(item.id)}">Open in inbox view →</button>
+          <button class="section-link" data-open-modal-id="${escapeHtml(item.id)}">Open full email →</button>
         </div>
       </div>` : '';
     return `
@@ -1517,6 +1617,263 @@ function ensureSse() {
     setStatus('Reconnecting…', 'var(--color-warning)');
   };
   state.sse = sse;
+}
+
+// ============================================================
+// Email detail modal
+// ============================================================
+const modalMount = document.querySelector('#modal-mount');
+const helpMount  = document.querySelector('#help-mount');
+
+async function openEmailModal(id) {
+  if (!id) return;
+  // Optimistic shell — show whatever we have in state immediately, then fetch
+  // the full body in the background and patch it in.
+  const item = state.items.find(i => i.id === id);
+  const enriched = state.enriched[id];
+  if (!item) return;
+  renderModal(item, enriched, '__loading__');
+  try {
+    const res = await fetch(`/api/email/${encodeURIComponent(id)}/details`);
+    const data = await res.json();
+    if (data && data.ok) {
+      renderModal(item, data.enriched || enriched, data.body || '');
+    } else {
+      renderModal(item, enriched, ''); // fallback — at least show what we have
+    }
+  } catch (e) {
+    renderModal(item, enriched, '');
+  }
+}
+
+function closeEmailModal() {
+  modalMount.innerHTML = '';
+}
+
+function renderModal(item, enriched, body) {
+  const e = enriched || {};
+  const conf = enriched ? confidenceFor(item, enriched) : 'high';
+  const badges = (e.badges || []).map(b =>
+      `<span class="badge badge-${b}">${b.replace('_',' ')}</span>`).join('');
+  const phishingChip = e.phishingSuspected
+      ? `<span class="phishing-flag" style="margin-right:6px">⚠ phishing flagged</span>` : '';
+  const confChip = conf === 'low'
+      ? `<span class="confidence-low" title="Summary keywords don't overlap with subject/sender">⚠ verify</span>` : '';
+  const bodyHtml = body === '__loading__'
+      ? `<div class="modal-loading"><div class="spinner" style="margin:0 auto 10px"></div>Loading body…</div>`
+      : (body
+          ? `<pre class="modal-fullbody">${escapeHtml(body)}</pre>`
+          : `<div class="modal-loading">No body cached for this email yet — try ↻ Re-analyze.</div>`);
+
+  modalMount.innerHTML = `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <div class="modal-card">
+        <button class="modal-close" data-modal-close title="Close (Esc)">×</button>
+        <div class="modal-head">
+          <span class="modal-sender">${escapeHtml(item.sender || '(unknown sender)')}</span>
+          <span class="modal-subject">${escapeHtml(item.subject || '(no subject)')}</span>
+          <div class="modal-meta">
+            ${item.time ? `<span>${escapeHtml(item.time)}</span>` : ''}
+            ${badges ? `<span class="badges" style="display:inline-flex;gap:6px">${badges}</span>` : ''}
+            ${phishingChip}
+            ${confChip}
+            ${enriched && !enriched.failed ? `<span style="margin-left:auto;color:var(--text-muted)">Analyzed in ${enriched.processedMs} ms</span>` : ''}
+          </div>
+        </div>
+        <div class="modal-body">
+          ${enriched && !enriched.failed ? `
+            <div class="modal-section">
+              <h4>Summary</h4>
+              <div class="modal-summary">${escapeHtml(enriched.summary || '')}</div>
+            </div>` : ''}
+          ${enriched && enriched.ctas && enriched.ctas.length > 0 ? `
+            <div class="modal-section">
+              <h4>Action Items</h4>
+              ${renderCtas(enriched.ctas, item.id)}
+            </div>` : ''}
+          ${enriched && enriched.needsReply && enriched.replyDrafts ? `
+            <div class="modal-section">
+              <h4>Reply drafts</h4>
+              ${renderDrafts(item.id, enriched.replyDrafts)}
+            </div>` : ''}
+          <div class="modal-section">
+            <h4>Email body</h4>
+            ${bodyHtml}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  // Backdrop click closes; modal-card click does NOT (event stops at .modal-card).
+  modalMount.querySelector('[data-modal-backdrop]')?.addEventListener('click', (e) => {
+    if (e.target.matches('[data-modal-backdrop]')) closeEmailModal();
+  });
+  modalMount.querySelector('[data-modal-close]')?.addEventListener('click', closeEmailModal);
+  // Wire interactive children inside the modal (drafts, CTA done toggles).
+  wireDraftHandlers(modalMount);
+  wireCtaHandlers(modalMount);
+}
+
+// CTA done-toggle and "Hide done" checkbox handlers. Called whenever a view
+// re-renders so freshly-rendered CTAs get wired. Idempotent: addEventListener
+// only sees fresh DOM nodes after innerHTML reset, no double-bind.
+function wireCtaHandlers(scope) {
+  const root = scope || document;
+  root.querySelectorAll('[data-cta-done]').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const k = btn.dataset.ctaDone;
+      if (state.doneCtas.has(k)) state.doneCtas.delete(k);
+      else state.doneCtas.add(k);
+      saveDoneCtas(state.doneCtas);
+      btn.closest('.cta')?.classList.toggle('is-done');
+      btn.setAttribute('aria-pressed', state.doneCtas.has(k) ? 'true' : 'false');
+      btn.textContent = state.doneCtas.has(k) ? '✓' : '○';
+      // Top action panel mirrors the same state — re-render so it picks up.
+      renderActionPanel();
+    });
+  });
+  root.querySelectorAll('[data-toggle-hide-done]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      state.hideDoneCtas = cb.checked;
+      try { localStorage.setItem(HIDE_DONE_KEY, cb.checked ? '1' : '0'); } catch (e) {}
+      document.body.classList.toggle('hide-done-ctas', cb.checked);
+    });
+  });
+  // Whole CTA row click → opens the email modal (so user sees full context).
+  // Stop-propagation on the done button (handler above) keeps that interactive.
+  root.querySelectorAll('.cta[data-cta-key]').forEach(el => {
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-cta-done]')) return; // done button handled above
+      // Find the email id from the cta-key (format "id|text").
+      const key = el.dataset.ctaKey || '';
+      const id = key.split('|')[0];
+      if (id && id !== 'undefined') openEmailModal(id);
+    });
+  });
+}
+
+// ============================================================
+// Search box (live filter)
+// ============================================================
+const searchBox = document.querySelector('#search-box');
+const searchInput = document.querySelector('#search-input');
+let searchDebounceTimer = null;
+searchInput?.addEventListener('input', () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    state.searchTerm = (searchInput.value || '').trim().toLowerCase();
+    applySearchFilter();
+  }, SEARCH_DEBOUNCE_MS);
+});
+searchInput?.addEventListener('focus', () => searchBox?.classList.add('active'));
+searchInput?.addEventListener('blur',  () => searchBox?.classList.remove('active'));
+
+function applySearchFilter() {
+  const term = state.searchTerm;
+  if (!term) {
+    document.body.classList.remove('search-active');
+    list.querySelectorAll('.email').forEach(el => el.classList.remove('search-match'));
+    digestEl.querySelectorAll('.digest-row').forEach(el => el.classList.remove('search-match'));
+    return;
+  }
+  document.body.classList.add('search-active');
+  // Inbox view rows
+  list.querySelectorAll('.email').forEach(el => {
+    const id = el.dataset.id;
+    el.classList.toggle('search-match', rowMatchesSearch(id, term));
+  });
+  // Digest rows
+  digestEl.querySelectorAll('.digest-row[data-expand-key]').forEach(el => {
+    const id = (el.dataset.expandKey || '').split(':')[1];
+    el.classList.toggle('search-match', rowMatchesSearch(id, term));
+  });
+}
+function rowMatchesSearch(id, term) {
+  if (!id) return false;
+  const item = state.items.find(i => i.id === id);
+  const enriched = state.enriched[id];
+  if (!item) return false;
+  const hay = ((item.sender || '') + ' '
+            + (item.subject || '') + ' '
+            + (item.snippet || '') + ' '
+            + (enriched?.summary || '')).toLowerCase();
+  return hay.includes(term);
+}
+
+// ============================================================
+// Help overlay (?)
+// ============================================================
+function showHelp() {
+  helpMount.innerHTML = `
+    <div class="help-overlay" data-help-backdrop>
+      <div class="help-overlay-inner">
+        <h3>Keyboard shortcuts</h3>
+        <table>
+          <tr><td class="kbd-cell"><kbd>r</kbd></td><td>Refresh inbox</td></tr>
+          <tr><td class="kbd-cell"><kbd>i</kbd> / <kbd>d</kbd></td><td>Switch to Inbox / Digest view</td></tr>
+          <tr><td class="kbd-cell"><kbd>j</kbd> / <kbd>k</kbd></td><td>Next / previous row</td></tr>
+          <tr><td class="kbd-cell"><kbd>Enter</kbd></td><td>Open selected email</td></tr>
+          <tr><td class="kbd-cell"><kbd>Esc</kbd></td><td>Close modal / clear selection</td></tr>
+          <tr><td class="kbd-cell"><kbd>⌘K</kbd> / <kbd>/</kbd></td><td>Focus search</td></tr>
+          <tr><td class="kbd-cell"><kbd>?</kbd></td><td>Show this overlay</td></tr>
+        </table>
+        <div class="close-hint">click anywhere to dismiss</div>
+      </div>
+    </div>`;
+  helpMount.querySelector('[data-help-backdrop]')?.addEventListener('click', () => helpMount.innerHTML = '');
+}
+document.querySelector('#btn-help')?.addEventListener('click', showHelp);
+
+// ============================================================
+// Keyboard shortcuts (window-level)
+// ============================================================
+window.addEventListener('keydown', (ev) => {
+  // Ignore when typing into an input/textarea/contenteditable.
+  const target = ev.target;
+  const inField = target instanceof HTMLElement && (
+        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+  // Cmd/Ctrl-K focus search regardless.
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
+    ev.preventDefault();
+    searchInput?.focus();
+    return;
+  }
+  if (ev.key === 'Escape') {
+    if (modalMount.firstChild) { closeEmailModal(); return; }
+    if (helpMount.firstChild)  { helpMount.innerHTML = ''; return; }
+    if (state.searchTerm)      { searchInput.value = ''; state.searchTerm = ''; applySearchFilter(); return; }
+    state.selectedId = null;
+    list.querySelectorAll('.email.selected').forEach(el => el.classList.remove('selected'));
+    return;
+  }
+  if (inField) return;
+  switch (ev.key.toLowerCase()) {
+    case 'r': ev.preventDefault(); refreshInbox(); break;
+    case 'i': ev.preventDefault(); state.view = 'inbox'; persistView(); applyView(); renderList(); renderBadgeBar(); break;
+    case 'd': ev.preventDefault(); state.view = 'digest'; persistView(); applyView(); renderList(); break;
+    case '/': ev.preventDefault(); searchInput?.focus(); break;
+    case 'j': ev.preventDefault(); selectAdjacentRow(+1); break;
+    case 'k': ev.preventDefault(); selectAdjacentRow(-1); break;
+    case 'enter':
+      ev.preventDefault();
+      if (state.selectedId) openEmailModal(state.selectedId);
+      break;
+    case '?': ev.preventDefault(); showHelp(); break;
+  }
+});
+
+function selectAdjacentRow(delta) {
+  if (state.view !== 'inbox' || state.items.length === 0) return;
+  let idx = state.items.findIndex(i => i.id === state.selectedId);
+  if (idx < 0) idx = delta > 0 ? -1 : state.items.length;
+  idx = Math.max(0, Math.min(state.items.length - 1, idx + delta));
+  state.selectedId = state.items[idx].id;
+  list.querySelectorAll('.email.selected').forEach(el => el.classList.remove('selected'));
+  const next = list.querySelector(`.email[data-id="${CSS.escape(String(state.selectedId))}"]`);
+  if (next) {
+    next.classList.add('selected');
+    next.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 btnRefresh.addEventListener('click', refreshInbox);
