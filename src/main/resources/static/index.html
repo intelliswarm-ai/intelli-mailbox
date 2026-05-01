@@ -302,14 +302,20 @@
       margin: 0;
     }
     .draft-actions { padding: 8px 12px; border-top: 1px solid var(--border-subtle); display: flex; gap: 8px; }
-    .draft-copy {
+    .draft-copy, .draft-inject {
       all: unset; cursor: pointer;
       padding: 4px 12px; font-size: 0.72rem; font-weight: 500;
       color: var(--accent); border: 1px solid var(--accent); border-radius: 6px;
-      transition: background 0.15s, color 0.15s;
+      transition: background 0.15s, color 0.15s, opacity 0.15s;
     }
-    .draft-copy:hover { background: var(--accent); color: #ffffff; }
-    .draft-copy.copied { background: var(--color-success); color: #ffffff; border-color: var(--color-success); }
+    .draft-copy:hover, .draft-inject:hover { background: var(--accent); color: #ffffff; }
+    .draft-copy.copied, .draft-inject.ok {
+      background: var(--color-success); color: #ffffff; border-color: var(--color-success);
+    }
+    .draft-inject.failed {
+      background: var(--color-error); color: #ffffff; border-color: var(--color-error);
+    }
+    .draft-inject:disabled { cursor: wait; opacity: 0.6; }
 
     /* ---- Loading state per row --------------------------------- */
     .processing { color: var(--text-muted); font-size: 0.85rem; display: flex; gap: 8px; align-items: center; }
@@ -334,6 +340,277 @@
     @keyframes blink { 50% { opacity: 0; } }
     .email.streaming { border-left: 3px solid var(--accent); }
 
+    /* ---- View toggle (Inbox / Digest) ------------------------- */
+    .view-toggle {
+      display: inline-flex; align-items: center;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px; padding: 3px;
+    }
+    .view-toggle button {
+      all: unset; cursor: pointer; font-family: inherit; font-size: 0.78rem; font-weight: 500;
+      color: var(--text-muted); padding: 5px 12px; border-radius: 999px;
+      display: inline-flex; align-items: center; gap: 6px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .view-toggle button[aria-pressed="true"] {
+      background: var(--gradient-brand); color: #ffffff;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    [data-theme="light"] .view-toggle button[aria-pressed="true"] {
+      background: var(--accent); color: #ffffff; box-shadow: none;
+    }
+    .view-toggle button:hover:not([aria-pressed="true"]) { color: var(--text-primary); }
+
+    /* ---- Daily Inbox Digest ----------------------------------- */
+    .digest { display: grid; gap: 18px; }
+
+    .digest-action-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 18px;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: var(--header-blur);
+    }
+    .digest-action-panel h2 {
+      margin: 0 0 4px 0; font-size: 0.85rem; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent);
+    }
+    .digest-action-panel .panel-meta {
+      font-size: 0.78rem; color: var(--text-muted); margin-bottom: 10px;
+    }
+    .digest-action-list { display: grid; gap: 6px; }
+    .digest-action-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 10px; align-items: center;
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      background: transparent;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .digest-action-row:hover { background: var(--bg-card-hover); border-color: var(--accent); }
+    .digest-action-row .pri-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .digest-action-row.priority-HIGH   .pri-dot { background: var(--color-error); }
+    .digest-action-row.priority-MEDIUM .pri-dot { background: var(--color-warning); }
+    .digest-action-row.priority-LOW    .pri-dot { background: var(--color-success); }
+    .digest-action-row .action-text { color: var(--text-primary); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .digest-action-row .action-from { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
+    .digest-action-row .action-due  {
+      font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);
+      padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border-subtle);
+      white-space: nowrap;
+    }
+    .digest-action-row .action-due.overdue { color: var(--color-error); border-color: var(--color-error); }
+
+    /* Shared (inbox + digest) action panel header with collapse chevron. */
+    #action-panel-mount { margin-bottom: 16px; }
+    #action-panel-mount:empty { margin-bottom: 0; }
+    .action-panel-header-row {
+      display: flex; align-items: center; gap: 10px; cursor: pointer;
+      user-select: none;
+    }
+    .action-panel-header-row .chevron {
+      font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);
+      transition: transform 0.15s;
+    }
+    .action-panel-header-row.collapsed .chevron { transform: rotate(-90deg); }
+    .action-panel-header-row .panel-summary {
+      font-size: 0.78rem; color: var(--text-muted); margin-left: auto;
+    }
+    .action-panel-collapsed-list { display: none; }
+    .action-panel-collapsed .digest-action-list { display: none; }
+
+    .digest-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: var(--header-blur);
+    }
+    .digest-section.section-RISK { border-left: 3px solid var(--color-error); }
+    .digest-section.section-VIP  { border-left: 3px solid var(--accent-2); }
+
+    .digest-section-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-section);
+      background: var(--bg-secondary);
+    }
+    .digest-section-header .section-name {
+      font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-heading);
+    }
+    .digest-section-header .section-count {
+      font-size: 0.72rem; color: var(--text-muted);
+      padding: 1px 8px; border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+    }
+    .digest-section-header .section-link {
+      margin-left: auto;
+      all: unset; cursor: pointer;
+      font-size: 0.72rem; color: var(--accent);
+      padding: 3px 10px; border-radius: 6px; border: 1px solid var(--accent);
+      transition: background 0.15s, color 0.15s;
+    }
+    .digest-section-header .section-link:hover { background: var(--accent); color: #ffffff; }
+
+    .digest-rows { padding: 6px; }
+    .digest-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 200px) 1fr auto;
+      gap: 14px; align-items: center;
+      padding: 9px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .digest-row:hover { background: var(--bg-card-hover); }
+    .digest-row + .digest-row { border-top: 1px solid var(--border-section); }
+    .digest-row .digest-sender { color: var(--text-heading); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .digest-row .digest-subject { color: var(--text-primary); overflow: hidden; }
+    .digest-row .digest-subject .digest-summary { display: block; color: var(--text-muted); font-size: 0.82rem; margin-top: 2px; line-height: 1.35;
+                                                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .digest-row .digest-time { color: var(--text-muted); font-size: 0.78rem; font-family: var(--font-mono); white-space: nowrap; }
+    .digest-row .phishing-flag {
+      display: inline-block;
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--color-error); margin-right: 6px;
+    }
+
+    .digest-section.section-RISK .digest-row.is-phishing { background: rgba(239,83,80,0.06); }
+
+    /* Inline-expanded digest row: shows summary, CTAs, and reply drafts in place. */
+    .digest-row.expanded { background: var(--bg-card-hover); border-radius: 8px 8px 0 0; }
+    .digest-expanded {
+      padding: 12px 16px 14px 16px;
+      margin: 0 6px 6px 6px;
+      border: 1px solid var(--border-subtle);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      background: var(--bg-card-hover);
+      display: grid; gap: 10px;
+      animation: slidein 0.18s ease;
+    }
+    .digest-expanded .summary { color: var(--text-primary); line-height: 1.5; }
+    .digest-row .row-toggle {
+      width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+      color: var(--text-muted); font-family: var(--font-mono); font-size: 0.75rem;
+      transition: transform 0.15s;
+    }
+    .digest-row.expanded .row-toggle { transform: rotate(90deg); color: var(--accent); }
+
+    .digest-empty {
+      padding: 60px 20px; text-align: center; color: var(--text-muted);
+    }
+
+    /* ---- Confidence chip (low-overlap warning) ---------------- */
+    .confidence-low {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 1px 7px; border-radius: 999px;
+      font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em;
+      background: rgba(255,173,102,0.18); color: var(--color-warning);
+      border: 1px solid var(--color-warning);
+      cursor: help; user-select: none;
+      vertical-align: middle; margin-left: 4px;
+    }
+
+    /* ---- CTA done toggle -------------------------------------- */
+    .cta-done-btn {
+      all: unset; cursor: pointer;
+      width: 18px; height: 18px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border-subtle); border-radius: 4px;
+      color: var(--text-muted); font-size: 0.85rem;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .cta-done-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .cta-done-btn[aria-pressed="true"] {
+      background: var(--color-success); border-color: var(--color-success); color: #ffffff;
+    }
+    .cta.is-done .cta-text { text-decoration: line-through; opacity: 0.5; }
+    .cta.is-done .cta-source { opacity: 0.4; }
+    body.hide-done-ctas .cta.is-done { display: none; }
+    body.hide-done-ctas .digest-action-row.is-done { display: none; }
+    .digest-action-row.is-done .action-text { text-decoration: line-through; opacity: 0.5; }
+
+    .ctas-toolbar {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.72rem; color: var(--text-muted);
+    }
+    .ctas-toolbar label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+
+    /* ---- Search box ------------------------------------------- */
+    .search-box {
+      flex: 1 1 220px; max-width: 380px;
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 4px 10px;
+    }
+    .search-box input {
+      all: unset; flex: 1 1 auto;
+      font: inherit; color: var(--text-primary); min-width: 0;
+    }
+    .search-box input::placeholder { color: var(--text-muted); }
+    .search-box .kbd {
+      font-size: 0.66rem; color: var(--text-muted);
+      border: 1px solid var(--border-subtle); border-radius: 4px;
+      padding: 1px 5px; font-family: var(--font-mono);
+    }
+    .search-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
+    body.search-active .email:not(.search-match),
+    body.search-active .digest-row:not(.search-match),
+    body.search-active .digest-expanded.search-hidden { display: none; }
+
+    /* ---- Selected-row highlight (for j/k navigation) --------- */
+    .email.selected, .digest-row.selected {
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+
+    /* ---- Help overlay (?) ------------------------------------ */
+    .help-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      animation: fadein 0.15s ease;
+    }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+    .help-overlay-inner {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 24px 28px;
+      max-width: 460px; width: 90%;
+      color: var(--text-primary);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .help-overlay-inner h3 {
+      margin: 0 0 14px 0; font-size: 1rem; color: var(--text-heading);
+    }
+    .help-overlay-inner table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .help-overlay-inner td { padding: 4px 0; vertical-align: top; }
+    .help-overlay-inner td.kbd-cell {
+      width: 90px; font-family: var(--font-mono);
+    }
+    .help-overlay-inner td.kbd-cell kbd {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px; padding: 1px 6px;
+      font-size: 0.78rem; color: var(--text-primary);
+    }
+    .help-overlay-inner .close-hint {
+      margin-top: 14px; font-size: 0.78rem; color: var(--text-muted); text-align: right;
+    }
+
     footer {
       padding: 24px; text-align: center; color: var(--text-muted);
       font-size: 0.8rem; border-top: 1px solid var(--border-section); margin-top: 60px;
@@ -355,6 +632,16 @@
 
   <div class="toolbar">
     <button id="btn-refresh">↻ Refresh inbox</button>
+    <div class="view-toggle" role="group" aria-label="View">
+      <button type="button" data-view-value="inbox" aria-pressed="true" title="Flat inbox view">≡ Inbox</button>
+      <button type="button" data-view-value="digest" aria-pressed="false" title="Daily inbox digest, grouped by badge">▦ Digest</button>
+    </div>
+    <div class="search-box" id="search-box">
+      <span style="color:var(--text-muted)">⌕</span>
+      <input id="search-input" type="search" placeholder="Search sender / subject / summary…" autocomplete="off" />
+      <span class="kbd" title="Cmd/Ctrl-K to focus">⌘K</span>
+    </div>
+    <button class="secondary" id="btn-help" title="Keyboard shortcuts (?)">?</button>
     <span class="meta" id="meta">No inbox loaded yet</span>
   </div>
 
@@ -371,7 +658,9 @@
         Sign in to Gmail in the Chrome window that opened, then click <b>↻ Refresh inbox</b>.
       </p>
     </div>
+    <div id="action-panel-mount"></div>
     <div id="list" class="email-list"></div>
+    <div id="digest" class="digest" style="display:none"></div>
   </main>
 
   <footer>
@@ -404,7 +693,11 @@ function applyTheme(name) {
 
 // -------- App state -------------------------------------------------
 const ALL_BADGES = ['MEETING','RISK','EXTERNAL','AUTOMATED','VIP','FOLLOW_UP','NEWSLETTER','FINANCE'];
+// Section ordering for the digest view. RISK first so phishing/security threats lead;
+// then signals tied to people (VIP, follow-ups, meetings); then transactional categories.
+const DIGEST_ORDER = ['RISK','VIP','FOLLOW_UP','MEETING','FINANCE','EXTERNAL','AUTOMATED','NEWSLETTER'];
 const FILTER_KEY = 'intellimailbox-filter';
+const VIEW_KEY = 'intellimailbox-view';
 const state = {
   items: [],                    // InboxItem[]
   enriched: {},                 // id → EnrichedEmail
@@ -415,6 +708,12 @@ const state = {
   // Filter persists across hard-refresh via localStorage. Server cache + SSE replay
   // restore items+enrichments on its own — this just keeps the user's chosen view.
   filter: (() => { try { return localStorage.getItem(FILTER_KEY) || null; } catch (e) { return null; } })(),
+  // 'inbox' (flat list, default) or 'digest' (badge-grouped). Persisted like the theme.
+  view: (() => { try { return localStorage.getItem(VIEW_KEY) === 'digest' ? 'digest' : 'inbox'; } catch (e) { return 'inbox'; } })(),
+  // Per-section expanded row ids in digest view. Key is "${badge}:${id}" so the
+  // same email expanded under MEETING and EXTERNAL is independent. Not persisted —
+  // expansion state is a transient UI affordance.
+  digestExpanded: new Set(),
   sse: null,                    // EventSource
   hasReceivedReplay: false,     // first SSE event arrives after page load
 };
@@ -439,19 +738,195 @@ function ensureItemListed(item) {
 
 const $ = (s) => document.querySelector(s);
 const list = $('#list');
+const digestEl = $('#digest');
+const actionMount = $('#action-panel-mount');
 const empty = $('#empty');
 const statusText = $('#status-text');
 const meta = $('#meta');
 const btnRefresh = $('#btn-refresh');
 const badgeBar = $('#badge-bar');
 
+// ---- Search / done CTAs / selection state ----
+const DONE_CTAS_KEY = 'intellimailbox-done-ctas';     // Set<string> of "id|text"
+const HIDE_DONE_KEY = 'intellimailbox-hide-done';     // '1' or '0'
+const SEARCH_DEBOUNCE_MS = 80;
+
+function loadDoneCtas() {
+  try {
+    const raw = localStorage.getItem(DONE_CTAS_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw));
+  } catch (e) { return new Set(); }
+}
+function saveDoneCtas(set) {
+  try { localStorage.setItem(DONE_CTAS_KEY, JSON.stringify([...set])); } catch (e) { /* ignore */ }
+}
+function ctaKey(id, text) { return `${id}|${(text || '').slice(0, 200)}`; }
+
+state.doneCtas = loadDoneCtas();
+state.hideDoneCtas = (() => { try { return localStorage.getItem(HIDE_DONE_KEY) === '1'; } catch (e) { return false; } })();
+state.searchTerm = '';
+state.selectedId = null; // for j/k keyboard navigation in inbox view
+
+if (state.hideDoneCtas) document.body.classList.add('hide-done-ctas');
+
+// Token-overlap heuristic — same one used in the diagnostic dump that found the
+// 67% body/index mismatch. Short tokens (<4 chars) are too noisy; we cap the
+// denominator at 6 so emails with very long subjects don't unfairly fail.
+function confidenceFor(item, enriched) {
+  if (!enriched || enriched.failed) return 'high';
+  const text = ((item.subject || '') + ' ' + (item.sender || '') + ' ' + (item.snippet || '')).toLowerCase();
+  const summary = (enriched.summary || '').toLowerCase();
+  if (!summary || !text.trim()) return 'high';
+  const tokens = new Set();
+  for (const m of text.matchAll(/[a-zà-ÿ]{4,}/g)) tokens.add(m[0]);
+  if (tokens.size === 0) return 'high';
+  const sumTokens = new Set();
+  for (const m of summary.matchAll(/[a-zà-ÿ]{4,}/g)) sumTokens.add(m[0]);
+  let common = 0;
+  for (const t of tokens) if (sumTokens.has(t)) common++;
+  const denom = Math.max(1, Math.min(tokens.size, 6));
+  return (common / denom) < 0.3 ? 'low' : 'high';
+}
+
+const PANEL_COLLAPSED_KEY = 'intellimailbox-action-panel-collapsed';
+function isActionPanelCollapsed() {
+  try { return localStorage.getItem(PANEL_COLLAPSED_KEY) === '1'; } catch (e) { return false; }
+}
+function setActionPanelCollapsed(v) {
+  try { localStorage.setItem(PANEL_COLLAPSED_KEY, v ? '1' : '0'); } catch (e) { /* ignore */ }
+}
+
+// Aggregates every CTA across enriched emails, sorted overdue→HIGH→MEDIUM→LOW.
+// Returns { all: [...], highCount, overdueCount, distinctEmails }.
+function computeActionItems() {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const PRI_RANK = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+  const all = [];
+  state.items.forEach(item => {
+    const enriched = state.enriched[item.id];
+    if (!enriched || enriched.failed) return;
+    (enriched.ctas || []).forEach(cta => all.push({ item, enriched, cta }));
+  });
+  all.sort((a, b) => {
+    const aOver = a.cta.dueDate && a.cta.dueDate < todayIso ? 0 : 1;
+    const bOver = b.cta.dueDate && b.cta.dueDate < todayIso ? 0 : 1;
+    if (aOver !== bOver) return aOver - bOver;
+    const aPri = PRI_RANK[(a.cta.priority || 'MEDIUM').toUpperCase()] ?? 1;
+    const bPri = PRI_RANK[(b.cta.priority || 'MEDIUM').toUpperCase()] ?? 1;
+    if (aPri !== bPri) return aPri - bPri;
+    if (a.cta.dueDate && b.cta.dueDate) return a.cta.dueDate.localeCompare(b.cta.dueDate);
+    if (a.cta.dueDate) return -1;
+    if (b.cta.dueDate) return 1;
+    return 0;
+  });
+  return {
+    todayIso,
+    all,
+    highCount: all.filter(x => (x.cta.priority || '').toUpperCase() === 'HIGH').length,
+    overdueCount: all.filter(x => x.cta.dueDate && x.cta.dueDate < todayIso).length,
+    distinctEmails: new Set(all.map(x => x.item.id)).size,
+  };
+}
+
+// Builds the (collapsible) Action Items panel — same in both views, mounted at
+// #action-panel-mount above the list / digest. Click on a row jumps in inbox
+// view, expands-in-place in digest view (handler wired in renderActionPanel).
+function renderActionPanel() {
+  const { todayIso, all, highCount, overdueCount, distinctEmails } = computeActionItems();
+  if (all.length === 0) {
+    actionMount.innerHTML = '';
+    return;
+  }
+  const collapsed = isActionPanelCollapsed();
+  const summaryBits = [];
+  if (highCount > 0) summaryBits.push(`${highCount} high-priority`);
+  if (overdueCount > 0) summaryBits.push(`${overdueCount} overdue`);
+  summaryBits.push(`${all.length} total across ${distinctEmails} email${distinctEmails === 1 ? '' : 's'}`);
+  actionMount.innerHTML = `
+    <div class="digest-action-panel ${collapsed ? 'action-panel-collapsed' : ''}">
+      <div class="action-panel-header-row ${collapsed ? 'collapsed' : ''}" id="action-panel-toggle">
+        <span class="chevron">▾</span>
+        <h2 style="margin:0">Action Items</h2>
+        <span class="panel-summary">${summaryBits.join(' · ')}</span>
+      </div>
+      <div class="digest-action-list" style="margin-top:10px">
+        ${all.slice(0, 12).map(x => {
+          const pri = (x.cta.priority || 'MEDIUM').toUpperCase();
+          const overdue = x.cta.dueDate && x.cta.dueDate < todayIso ? 'overdue' : '';
+          const due = x.cta.dueDate ? `<span class="action-due ${overdue}">${escapeHtml(x.cta.dueDate)}</span>` : '';
+          return `
+            <div class="digest-action-row priority-${pri}" data-action-id="${escapeHtml(x.item.id)}">
+              <span class="pri-dot"></span>
+              <span class="action-text" title="${escapeHtml(x.cta.text || '')}">${escapeHtml(x.cta.text || '')}</span>
+              <span class="action-from" title="${escapeHtml(x.item.sender || '')}">${escapeHtml(x.item.sender || '')}</span>
+              ${due}
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  actionMount.querySelector('#action-panel-toggle')?.addEventListener('click', () => {
+    setActionPanelCollapsed(!isActionPanelCollapsed());
+    renderActionPanel();
+  });
+  actionMount.querySelectorAll('[data-action-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.actionId;
+      if (state.view === 'digest') expandDigestRowForEmail(id);
+      else flashInboxRow(id);
+    });
+  });
+}
+
+// In digest view: find the first section containing this email, expand its row,
+// scroll the row into view + flash it.
+function expandDigestRowForEmail(id) {
+  const enriched = state.enriched[id];
+  if (!enriched) return;
+  const badges = enriched.badges || [];
+  const targetBadge = DIGEST_ORDER.find(b => badges.includes(b)) || (badges.length === 0 ? 'UNCATEGORIZED' : badges[0]);
+  const key = `${targetBadge}:${id}`;
+  state.digestExpanded.add(key);
+  renderDigest();
+  const row = digestEl.querySelector(`.digest-row[data-expand-key="${CSS.escape(key)}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.style.transition = 'box-shadow 0.2s';
+    row.style.boxShadow = '0 0 0 2px var(--accent)';
+    setTimeout(() => { row.style.boxShadow = ''; }, 1200);
+  }
+}
+
+// In inbox view: scroll to the email row and briefly highlight it. Stays in inbox view.
+function flashInboxRow(id) {
+  const row = list.querySelector(`.email[data-id="${CSS.escape(String(id))}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.style.transition = 'box-shadow 0.2s';
+  row.style.boxShadow = '0 0 0 2px var(--accent)';
+  setTimeout(() => { row.style.boxShadow = ''; }, 1200);
+}
+
 function setStatus(text, color) {
   statusText.textContent = text;
   document.querySelector('.status .dot').style.background = color || 'var(--color-success)';
 }
 
+// Strip LLM control tokens that smaller Ollama models (phi3, qwen2.5:3b) leak
+// into output: <DONE>, <|endoftext|>, <|im_end|>, </s>, <eot>, etc. Also drops
+// stray markdown fences the model sometimes emits around plain prose.
+function stripLLMArtifacts(s) {
+  if (typeof s !== 'string' || !s) return s;
+  return s
+    .replace(/<\|?(?:done|endoftext|im_end|im_start|end_of_(?:text|turn)|eos|eot|stop)\|?>/gi, '')
+    .replace(/<\/s>|<s>/g, '')
+    .replace(/<DONE>/g, '')
+    .replace(/```(?:json|text)?\s*|\s*```/g, '')
+    .trim();
+}
+
 function escapeHtml(s) {
-  return (s || '').replace(/[&<>"']/g, c =>
+  return stripLLMArtifacts(s || '').replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
@@ -484,23 +959,30 @@ function dueLabel(iso) {
   return `<span class="cta-due ${overdue}" title="${escapeHtml(iso)}">due ${escapeHtml(iso)}</span>`;
 }
 
-function renderCtas(ctas) {
+function renderCtas(ctas, emailId) {
   if (!ctas || ctas.length === 0) return '';
   return `
     <div>
-      <div class="ctas-label">Action items</div>
+      <div class="ctas-toolbar">
+        <span class="ctas-label">Action items</span>
+        <span style="margin-left:auto"></span>
+        <label><input type="checkbox" data-toggle-hide-done ${state.hideDoneCtas ? 'checked' : ''} /> Hide done</label>
+      </div>
       <div class="ctas">
         ${ctas.map(c => {
           const pri = (c.priority || 'medium').toUpperCase();
           const type = (c.type || 'OTHER').toUpperCase();
+          const k = ctaKey(emailId, c.text);
+          const done = state.doneCtas.has(k);
           return `
-            <div class="cta priority-${pri}">
+            <div class="cta priority-${pri} ${done ? 'is-done' : ''}" data-cta-key="${escapeHtml(k)}">
               <div class="cta-priority"></div>
               <div>
                 <div class="cta-text">${escapeHtml(c.text || '')}</div>
                 ${c.sourceQuote ? `<div class="cta-source">"${escapeHtml(c.sourceQuote)}"</div>` : ''}
               </div>
               <div class="cta-meta">
+                <button class="cta-done-btn" aria-pressed="${done}" data-cta-done="${escapeHtml(k)}" title="Mark done">${done ? '✓' : '○'}</button>
                 <span class="cta-type">${escapeHtml(type)}</span>
                 ${dueLabel(c.dueDate)}
               </div>
@@ -532,14 +1014,18 @@ function renderDrafts(id, drafts) {
       <pre class="draft-body" data-row="${id}">${escapeHtml(drafts[initial] || '')}</pre>
       <div class="draft-actions">
         <button class="draft-copy" data-row="${id}">Copy</button>
+        <button class="draft-inject" data-row="${id}" title="Open this email in Gmail with the selected draft pasted into the reply box">↗ Use in Gmail</button>
       </div>
     </div>`;
 }
 
-// Wires draft-tab clicks (swap visible tone) and draft-copy clicks (clipboard)
-// for one row. Called after every renderList() so freshly-rendered DOM has handlers.
-function wireDraftHandlers() {
-  list.querySelectorAll('.reply-drafts').forEach(panel => {
+// Wires draft-tab clicks (swap visible tone), draft-copy clicks (clipboard),
+// and draft-inject clicks (POST to /api/email/{id}/inject-draft → BrowserTool
+// drives Gmail). Scope-agnostic so it works for drafts rendered in either the
+// inbox flat view OR the digest's inline-expanded rows.
+function wireDraftHandlers(scope) {
+  const root = scope || document;
+  root.querySelectorAll('.reply-drafts').forEach(panel => {
     const rowId = panel.dataset.row;
     const enriched = state.enriched[rowId];
     if (!enriched || !enriched.replyDrafts) return;
@@ -555,7 +1041,7 @@ function wireDraftHandlers() {
       });
     });
     const copyBtn = panel.querySelector('.draft-copy');
-    copyBtn.addEventListener('click', async () => {
+    copyBtn?.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(body.textContent);
         const orig = copyBtn.textContent;
@@ -563,9 +1049,42 @@ function wireDraftHandlers() {
         copyBtn.textContent = '✓ Copied';
         setTimeout(() => { copyBtn.classList.remove('copied'); copyBtn.textContent = orig; }, 1500);
       } catch (e) {
-        // Fallback: select the text so the user can ctrl+c manually
         const range = document.createRange(); range.selectNodeContents(body);
         const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      }
+    });
+    const injectBtn = panel.querySelector('.draft-inject');
+    injectBtn?.addEventListener('click', async () => {
+      // Tone = whichever tab is currently selected on this panel.
+      const activeTab = panel.querySelector('.draft-tab[aria-selected="true"]');
+      const tone = activeTab?.dataset.tone || 'formal';
+      const orig = injectBtn.textContent;
+      injectBtn.disabled = true;
+      injectBtn.textContent = '… opening in Gmail';
+      try {
+        const res = await fetch(
+            `/api/email/${encodeURIComponent(rowId)}/inject-draft`,
+            { method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ tone }) });
+        const data = await res.json().catch(() => ({ ok: false }));
+        if (data.ok) {
+          injectBtn.textContent = '✓ Pasted in Gmail';
+          injectBtn.classList.add('ok');
+          setStatus('Reply draft pasted in Gmail — switch to Chrome to send', 'var(--color-success)');
+        } else {
+          injectBtn.textContent = data.reason ? '✗ ' + data.reason : '✗ Failed';
+          injectBtn.classList.add('failed');
+        }
+      } catch (e) {
+        injectBtn.textContent = '✗ Network error';
+        injectBtn.classList.add('failed');
+      } finally {
+        setTimeout(() => {
+          injectBtn.textContent = orig;
+          injectBtn.classList.remove('ok', 'failed');
+          injectBtn.disabled = false;
+        }, 3000);
       }
     });
   });
@@ -583,7 +1102,11 @@ function renderRow(item) {
         <div class="summary">${escapeHtml(streaming.text)}<span class="stream-cursor"></span></div>
       </div>`;
   } else if (!enriched) {
-    bodyHtml = `<div class="email-body"><div class="processing"><div class="spinner"></div>Analyzing locally…</div></div>`;
+    // Distinguish queued (haven't started — backend is serial, so most rows sit
+    // here) from actively-streaming (handled in the !enriched && streaming
+    // branch above). A spinner on every queued row would falsely suggest 25
+    // parallel jobs when in fact only one is running at a time.
+    bodyHtml = `<div class="email-body"><div class="processing">⌛ Queued · waiting for the analyzer</div></div>`;
   } else if (enriched.failed) {
     bodyHtml = `<div class="email-body"><div class="summary">⚠ ${escapeHtml(enriched.summary)}</div></div>`;
   } else {
@@ -616,7 +1139,59 @@ function renderRow(item) {
     </div>`;
 }
 
+// Targeted re-render of one inbox row in place. Used by SSE handlers so a
+// streaming token (many per email) doesn't trigger a full O(N) renderList.
+// If the row's DOM doesn't exist yet (first time we see this id), falls back
+// to a full render so the row gets added.
+function rerenderInboxRow(id) {
+  const item = state.items.find(i => i.id === id);
+  if (!item) { renderList(); return; }
+  const existing = list.querySelector(`.email[data-id="${CSS.escape(String(id))}"]`);
+  if (!existing) { renderList(); return; }
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderRow(item);
+  const fresh = tmp.firstElementChild;
+  if (!fresh) return;
+  existing.replaceWith(fresh);
+  fresh.querySelector('button[data-action="reprocess"]')
+    ?.addEventListener('click', () => reprocess(id));
+  wireDraftHandlers(fresh);
+}
+
+// Cheaper-still update for the per-token streaming case: just patch the text
+// node in front of the cursor instead of replacing the row's DOM. Used while
+// the same row is mid-stream; full row re-render is reserved for state
+// transitions (queued → streaming, streaming → enriched).
+function patchStreamingSummary(id, fullText) {
+  const summaryEl = list.querySelector(`.email[data-id="${CSS.escape(String(id))}"] .summary`);
+  if (!summaryEl) return false;
+  const first = summaryEl.firstChild;
+  if (first && first.nodeType === Node.TEXT_NODE) {
+    first.data = fullText;
+  } else {
+    summaryEl.insertBefore(document.createTextNode(fullText), summaryEl.firstChild);
+  }
+  return true;
+}
+
 function renderList() {
+  // Toggle visible containers based on the current view mode. The digest view
+  // owns its own grouped layout; the inbox view is the flat list. Both read
+  // from the same state so SSE updates re-render whichever is showing.
+  // Action Items panel is rendered in BOTH views (above the list / digest)
+  // so users get aggregated CTAs without having to switch views.
+  renderActionPanel();
+  if (state.view === 'digest') {
+    list.style.display = 'none';
+    digestEl.style.display = 'grid';
+    badgeBar.style.display = 'none'; // digest IS the badge grouping; filter bar is redundant
+    renderDigest();
+    return;
+  }
+  list.style.display = 'grid';
+  digestEl.style.display = 'none';
+  badgeBar.style.display = '';
+
   if (state.items.length === 0) {
     empty.style.display = 'block';
     list.innerHTML = '';
@@ -631,7 +1206,192 @@ function renderList() {
   list.innerHTML = visible.map(renderRow).join('');
   list.querySelectorAll('button[data-action="reprocess"]').forEach(b =>
     b.addEventListener('click', () => reprocess(b.dataset.id)));
-  wireDraftHandlers();
+  wireDraftHandlers(list);
+}
+
+// -------- Digest view ----------------------------------------------
+// Renders one section per badge category (in DIGEST_ORDER). The aggregated
+// Action Items panel is rendered globally by renderActionPanel() (shared with
+// inbox view), so this function only owns the badge grouping. An email with
+// multiple badges appears in each matching section — matches the "smart
+// grouping" semantics of the original Python project.
+function renderDigest() {
+  if (state.items.length === 0) {
+    empty.style.display = 'block';
+    digestEl.innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const enrichedItems = state.items
+      .map(item => ({ item, enriched: state.enriched[item.id] }))
+      .filter(x => x.enriched && !x.enriched.failed);
+
+  const { all: allCtas, todayIso } = computeActionItems();
+
+  // ---- Group emails by badge --------------------------------------
+  const byBadge = {};
+  DIGEST_ORDER.forEach(b => { byBadge[b] = []; });
+  const uncategorized = [];
+  enrichedItems.forEach(({ item, enriched }) => {
+    const badges = enriched.badges || [];
+    if (badges.length === 0) {
+      uncategorized.push({ item, enriched });
+      return;
+    }
+    badges.forEach(b => {
+      if (byBadge[b]) byBadge[b].push({ item, enriched });
+    });
+  });
+
+  const sectionsHtml = DIGEST_ORDER
+    .filter(b => byBadge[b].length > 0)
+    .map(b => renderDigestSection(b, byBadge[b], todayIso))
+    .join('');
+
+  const uncategorizedHtml = uncategorized.length > 0
+    ? renderDigestSection('UNCATEGORIZED', uncategorized, todayIso)
+    : '';
+
+  // ---- Stats line ------------------------------------------------
+  const analyzed = enrichedItems.length;
+  const phishingCount = enrichedItems.filter(x => x.enriched.phishingSuspected).length;
+  const stats = `
+    <div class="digest-action-panel" style="padding:10px 16px">
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline">
+        <span style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">Today's digest</span>
+        <span><b>${analyzed}</b> analyzed</span>
+        ${phishingCount > 0 ? `<span style="color:var(--color-error)"><b>${phishingCount}</b> phishing flagged</span>` : ''}
+        ${allCtas.length > 0 ? `<span><b>${allCtas.length}</b> action items</span>` : ''}
+        ${state.items.length > analyzed ? `<span style="color:var(--text-muted)">${state.items.length - analyzed} still analyzing…</span>` : ''}
+      </div>
+    </div>`;
+
+  const body = stats + sectionsHtml + uncategorizedHtml;
+  digestEl.innerHTML = body || `<div class="digest-empty">No analyzed emails yet — refresh the inbox to begin.</div>`;
+
+  // Wire up: section "View in inbox" links switch to inbox + apply filter.
+  // Action-item rows (top panel) jump to the email in inbox view.
+  // Digest section rows toggle inline-expansion (summary + CTAs + drafts in place).
+  digestEl.querySelectorAll('[data-section-link]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const badge = el.dataset.sectionLink;
+      state.filter = (badge === 'UNCATEGORIZED') ? null : badge;
+      state.view = 'inbox';
+      persistFilter();
+      persistView();
+      applyView();
+      renderBadgeBar();
+      renderList();
+    });
+  });
+  digestEl.querySelectorAll('[data-jump-id]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      jumpToInboxRow(el.dataset.jumpId);
+    });
+  });
+  digestEl.querySelectorAll('.digest-row[data-expand-key]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      // Don't toggle if the click landed on something interactive inside the
+      // expanded panel (draft tab, copy button, inject button, due-date pill).
+      if (e.target.closest('.digest-expanded')) return;
+      const key = row.dataset.expandKey;
+      if (state.digestExpanded.has(key)) {
+        state.digestExpanded.delete(key);
+      } else {
+        state.digestExpanded.add(key);
+      }
+      renderDigest();
+    });
+  });
+  // Wire draft handlers for any inline-expanded panels.
+  wireDraftHandlers(digestEl);
+}
+
+function renderDigestSection(badge, entries, todayIso) {
+  const niceName = badge.replace('_', ' ');
+  const linkLabel = badge === 'UNCATEGORIZED' ? 'View in inbox →' : `Filter inbox by ${niceName} →`;
+  const rows = entries.map(({ item, enriched }) => {
+    const isPhishing = badge === 'RISK' && enriched.phishingSuspected;
+    const expandKey = `${badge}:${item.id}`;
+    const isExpanded = state.digestExpanded.has(expandKey);
+    // Pick the highest-priority CTA to surface inline; if none, fall back to summary.
+    const topCta = (enriched.ctas || []).slice().sort((a, b) => {
+      const ra = ({ HIGH: 0, MEDIUM: 1, LOW: 2 }[(a.priority || 'MEDIUM').toUpperCase()]) ?? 1;
+      const rb = ({ HIGH: 0, MEDIUM: 1, LOW: 2 }[(b.priority || 'MEDIUM').toUpperCase()]) ?? 1;
+      return ra - rb;
+    })[0];
+    const summaryLine = topCta
+      ? `→ ${escapeHtml(topCta.text || '')}`
+      : escapeHtml(enriched.summary || '');
+    // Expanded payload reuses the inbox renderers (renderCtas + renderDrafts)
+    // so the inject-draft button and copy/tab handlers wire up identically.
+    const expandedHtml = isExpanded ? `
+      <div class="digest-expanded" data-row="${escapeHtml(item.id)}">
+        <div class="summary">${escapeHtml(enriched.summary || '')}</div>
+        ${renderCtas(enriched.ctas)}
+        ${enriched.needsReply ? renderDrafts(item.id, enriched.replyDrafts) : ''}
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="latency">Analyzed in ${enriched.processedMs} ms</span>
+          <span class="spacer" style="flex:1"></span>
+          <button class="section-link" data-jump-id="${escapeHtml(item.id)}">Open in inbox view →</button>
+        </div>
+      </div>` : '';
+    return `
+      <div class="digest-row ${isPhishing ? 'is-phishing' : ''} ${isExpanded ? 'expanded' : ''}"
+           data-expand-key="${escapeHtml(expandKey)}">
+        <span class="digest-sender" title="${escapeHtml(item.sender || '')}">${escapeHtml(item.sender || '(unknown)')}</span>
+        <span class="digest-subject">
+          ${isPhishing ? '<span class="phishing-flag">⚠ PHISHING</span>' : ''}
+          ${escapeHtml(item.subject || '(no subject)')}
+          <span class="digest-summary" title="${escapeHtml(summaryLine)}">${summaryLine}</span>
+        </span>
+        <span class="digest-time">
+          <span class="row-toggle">▸</span>
+          ${escapeHtml(item.time || '')}
+        </span>
+      </div>
+      ${expandedHtml}`;
+  }).join('');
+  return `
+    <div class="digest-section section-${badge}">
+      <div class="digest-section-header">
+        <span class="digest-badge badge badge-${badge}" style="padding:2px 9px">${niceName}</span>
+        <span class="section-count">${entries.length} email${entries.length === 1 ? '' : 's'}</span>
+        <button class="section-link" data-section-link="${badge}">${linkLabel}</button>
+      </div>
+      <div class="digest-rows">${rows}</div>
+    </div>`;
+}
+
+// Switch to inbox view, scroll the matching row into view, briefly highlight it.
+function jumpToInboxRow(id) {
+  state.view = 'inbox';
+  state.filter = null;
+  persistView();
+  persistFilter();
+  applyView();
+  renderBadgeBar();
+  renderList();
+  const row = list.querySelector(`.email[data-id="${CSS.escape(String(id))}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.style.transition = 'box-shadow 0.2s';
+    row.style.boxShadow = '0 0 0 2px var(--accent)';
+    setTimeout(() => { row.style.boxShadow = ''; }, 1200);
+  }
+}
+
+function persistView() {
+  try { localStorage.setItem(VIEW_KEY, state.view); } catch (e) { /* ignore */ }
+}
+
+function applyView() {
+  document.querySelectorAll('.view-toggle button').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.viewValue === state.view ? 'true' : 'false');
+  });
 }
 
 // -------- API ------------------------------------------------------
@@ -678,17 +1438,30 @@ function ensureSse() {
   if (state.sse) return;
   const sse = new EventSource('/api/inbox/stream');
 
-  // Token-level streaming: each delta updates state.streaming[id] and re-renders
-  // the affected row. Discarded once the terminal `email` event lands.
+  // Token-level streaming: each delta updates state.streaming[id] and patches
+  // ONLY the affected row's summary text — never re-renders the whole list.
+  // A full renderList per token at 25 rows × ~50 tokens/email made the page
+  // unresponsive; with patchStreamingSummary it's a single text-node update.
   sse.addEventListener('summary_delta', (evt) => {
     try {
       const data = JSON.parse(evt.data);
       const id = data.emailId;
       if (!id) return;
+      const wasStreaming = !!state.streaming[id];
       let s = state.streaming[id];
       if (!s) s = state.streaming[id] = { text: '' };
       s.text += data.text;
-      renderList();
+      // Digest view doesn't show streaming-only rows (it only renders enriched
+      // emails), so deltas don't need any UI update there.
+      if (state.view !== 'inbox') return;
+      if (!wasStreaming) {
+        // First delta — row needs to transition from "Queued" to streaming
+        // layout. Replace just this row's DOM, not the whole list.
+        rerenderInboxRow(id);
+      } else if (!patchStreamingSummary(id, s.text)) {
+        // Lost the row's summary node somehow — fall back to row re-render.
+        rerenderInboxRow(id);
+      }
     } catch (e) { /* malformed — skip */ }
   });
 
@@ -697,12 +1470,14 @@ function ensureSse() {
       const enriched = JSON.parse(evt.data);
       const id = enriched.item?.id;
       if (!id) return;
+      const isReplay = !state.hasReceivedReplay;
       state.enriched[id] = enriched;
       // Streaming for this id is done — drop the partial text so the next
       // re-render uses the final EnrichedEmail.
       delete state.streaming[id];
       // Re-add the inbox row in case this was a replay after a hard refresh
       // (state.items would otherwise still be empty).
+      const wasNewItem = !state.items.find(i => i.id === enriched.item?.id);
       ensureItemListed(enriched.item);
       // Mark replay-restored so the meta text can reflect it.
       if (!state.hasReceivedReplay) {
@@ -711,14 +1486,29 @@ function ensureSse() {
           setStatus('Restored from cache', 'var(--color-success)');
         }
       }
-      renderList();
+      // Targeted update: re-render just this row in inbox view; full re-render
+      // for digest (sections + counts can shift). Replay events from a hard
+      // refresh come in a burst — for those, do a single full render at the end
+      // by detecting we just inserted a brand-new item.
+      if (state.view === 'inbox') {
+        if (wasNewItem) renderList();
+        else rerenderInboxRow(id);
+      } else {
+        renderDigest();
+      }
       renderBadgeBar();
+      renderActionPanel();
       const remaining = state.items.filter(i => !state.enriched[i.id]).length;
       if (remaining === 0) {
         setStatus('Ready', 'var(--color-success)');
         meta.textContent = `${state.items.length} email${state.items.length === 1 ? '' : 's'} · all analyzed`;
       } else {
-        meta.textContent = `${state.items.length} emails · ${remaining} still analyzing…`;
+        // Identify the active row (has streaming text) to make the sequential
+        // nature obvious in the status bar.
+        const activeId = Object.keys(state.streaming)[0];
+        const activeRow = activeId ? state.items.find(i => i.id === activeId) : null;
+        const activeLabel = activeRow ? ` · analyzing ${activeRow.subject || activeRow.sender || '(row)'}` : '';
+        meta.textContent = `${state.items.length} emails · ${remaining} queued${activeLabel}`;
       }
     } catch (e) { /* malformed event, skip */ }
   });
@@ -730,9 +1520,24 @@ function ensureSse() {
 }
 
 btnRefresh.addEventListener('click', refreshInbox);
+
+// View toggle: Inbox <-> Digest. The data is shared, so switching modes is
+// just a re-render. Persisted in localStorage like the theme.
+document.querySelectorAll('.view-toggle button').forEach(b => {
+  b.addEventListener('click', () => {
+    state.view = b.dataset.viewValue === 'digest' ? 'digest' : 'inbox';
+    persistView();
+    applyView();
+    renderList();
+    renderBadgeBar();
+  });
+});
+
 // Auto-connect SSE on load so any cached enrichments from a prior session show up.
+applyView();
 ensureSse();
 renderBadgeBar();
+renderList();
 </script>
 </body>
 </html>

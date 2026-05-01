@@ -1,6 +1,8 @@
 package ai.intelliswarm.intellimailbox.web;
 
 import ai.intelliswarm.intellimailbox.enrichment.EnrichedEmail;
+import ai.intelliswarm.intellimailbox.enrichment.ReplyDrafts;
+import ai.intelliswarm.intellimailbox.gmail.EmailReader;
 import ai.intelliswarm.intellimailbox.pipeline.InboxItem;
 import ai.intelliswarm.intellimailbox.pipeline.PipelineEvent;
 import ai.intelliswarm.intellimailbox.pipeline.PreprocessingPipeline;
@@ -11,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -38,9 +41,11 @@ public class InboxController {
     private static final Logger logger = LoggerFactory.getLogger(InboxController.class);
 
     private final PreprocessingPipeline pipeline;
+    private final EmailReader reader;
 
-    public InboxController(PreprocessingPipeline pipeline) {
+    public InboxController(PreprocessingPipeline pipeline, EmailReader reader) {
         this.pipeline = pipeline;
+        this.reader = reader;
     }
 
     @GetMapping("/inbox")
@@ -107,6 +112,97 @@ public class InboxController {
             }
         }
         return ResponseEntity.ok(Map.of("queued", false, "id", id, "reason", "id not in current inbox"));
+    }
+
+    /**
+     * Inject one of the cached reply drafts into Gmail's compose box for the
+     * given email. The user reviews and sends from Chrome — we never auto-send.
+     *
+     * <p>Body: {@code { "tone": "formal" | "friendly" | "brief" }} (optional,
+     * defaults to {@code formal}). Returns {@code { ok: boolean, id, tone, reason? }}.
+     * Whole body is wrapped in a top-level try/catch so any failure surfaces as a
+     * 200 with {@code ok=false} + a {@code reason} string the UI can show — never
+     * a 500. That keeps the button's failure label informative ({@code "✗ <reason>"})
+     * instead of generic {@code "✗ Failed"}.
+     */
+    @PostMapping(path = "/email/{id}/inject-draft",
+                 consumes = { MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE })
+    public ResponseEntity<Map<String, Object>> injectDraft(
+            @PathVariable String id,
+            @RequestBody(required = false) Map<String, Object> body) {
+        // HashMap (not Map.of) so null values never NPE.
+        java.util.HashMap<String, Object> resp = new java.util.HashMap<>();
+        resp.put("id", id);
+        String tone = "formal";
+        try {
+            Object rawTone = body == null ? null : body.get("tone");
+            if (rawTone instanceof String s && !s.isBlank()) tone = s.trim().toLowerCase();
+            resp.put("tone", tone);
+            logger.info("/api/email/{}/inject-draft (tone={})", id, tone);
+
+            EnrichedEmail cached = pipeline.getCached(id).orElse(null);
+            if (cached == null) {
+                resp.put("ok", false);
+                resp.put("reason", "email not in cache — refresh the inbox first");
+                return ResponseEntity.ok(resp);
+            }
+            if (cached.failed()) {
+                resp.put("ok", false);
+                resp.put("reason", "this email's enrichment failed");
+                return ResponseEntity.ok(resp);
+            }
+            ReplyDrafts drafts = cached.replyDrafts();
+            if (drafts == null) {
+                resp.put("ok", false);
+                resp.put("reason", "no drafts available — needsReply was false for this email");
+                return ResponseEntity.ok(resp);
+            }
+            String draft = switch (tone) {
+                case "friendly" -> drafts.friendly();
+                case "brief"    -> drafts.brief();
+                default         -> drafts.formal();
+            };
+            if (draft == null || draft.isBlank()) {
+                resp.put("ok", false);
+                resp.put("reason", tone + " draft is empty");
+                return ResponseEntity.ok(resp);
+            }
+            boolean ok = reader.injectReply(id, draft);
+            resp.put("ok", ok);
+            if (!ok) resp.put("reason", "Gmail DOM didn't respond — selector may have rotated");
+            return ResponseEntity.ok(resp);
+        } catch (Throwable t) {
+            // Top-level catch: any unexpected error becomes a tidy 200 with reason,
+            // not a Spring 500 with a stack trace.
+            logger.warn("/api/email/{}/inject-draft → unexpected: {}", id, t.toString(), t);
+            resp.putIfAbsent("tone", tone);
+            resp.put("ok", false);
+            resp.put("reason", t.getClass().getSimpleName() + ": "
+                    + (t.getMessage() == null ? "(no message)" : t.getMessage()));
+            return ResponseEntity.ok(resp);
+        }
+    }
+
+    /**
+     * Returns everything the email-detail modal needs in one shot:
+     * the cached enrichment, plus the raw body the BrowserTool scraped.
+     * Both come from in-memory caches populated during enrichment, so this
+     * is a fast read — never re-scrapes Gmail.
+     */
+    @GetMapping("/email/{id}/details")
+    public ResponseEntity<Map<String, Object>> details(@PathVariable String id) {
+        java.util.HashMap<String, Object> out = new java.util.HashMap<>();
+        out.put("id", id);
+        EnrichedEmail e = pipeline.getCached(id).orElse(null);
+        if (e == null) {
+            out.put("ok", false);
+            out.put("reason", "not in cache — refresh the inbox first");
+            return ResponseEntity.ok(out);
+        }
+        out.put("ok", true);
+        out.put("enriched", e);
+        out.put("body", pipeline.getCachedBody(id).orElse(""));
+        return ResponseEntity.ok(out);
     }
 
     @GetMapping("/health")

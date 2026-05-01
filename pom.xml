@@ -30,7 +30,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.4.4</spring-boot.version>
         <spring-ai.version>1.0.4</spring-ai.version>
-        <swarmai.version>1.0.18-SNAPSHOT</swarmai.version>
+        <swarmai.version>1.0.18</swarmai.version>
     </properties>
 
     <dependencyManagement>

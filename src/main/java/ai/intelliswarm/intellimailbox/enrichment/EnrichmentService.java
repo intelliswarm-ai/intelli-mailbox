@@ -137,12 +137,12 @@ public class EnrichmentService {
         long elapsed = System.currentTimeMillis() - t0;
         return new EnrichedEmail(
                 item,
-                nullToEmpty(result.summary),
+                stripLLMArtifacts(nullToEmpty(result.summary)),
                 badges,
-                ctas,
+                scrubCtas(ctas),
                 Boolean.TRUE.equals(result.phishingSuspected),
                 needsReply,
-                drafts,
+                scrubDrafts(drafts),
                 elapsed,
                 false);
     }
@@ -269,12 +269,12 @@ public class EnrichmentService {
         long elapsed = System.currentTimeMillis() - t0;
         return new EnrichedEmail(
                 item,
-                knownSummary,
+                stripLLMArtifacts(knownSummary),
                 badges,
-                ctas,
+                scrubCtas(ctas),
                 Boolean.TRUE.equals(result.phishingSuspected),
                 needsReply,
-                drafts,
+                scrubDrafts(drafts),
                 elapsed,
                 false);
     }
@@ -531,6 +531,48 @@ public class EnrichmentService {
     }
 
     private static String nullToDash(String s) { return s == null || s.isBlank() ? "—" : s; }
+
+    /**
+     * Strip LLM control/stop tokens that smaller Ollama models leak into output:
+     * {@code <DONE>}, {@code <|endoftext|>}, {@code <|im_end|>}, {@code </s>},
+     * {@code <eot>}, etc. Also drops stray markdown fences around plain prose.
+     * Applied to every text field before we ship the EnrichedEmail back —
+     * defense in depth (frontend has the same scrub).
+     */
+    private static String stripLLMArtifacts(String s) {
+        if (s == null) return null;
+        String out = s
+                .replaceAll("(?i)<\\|?(?:done|endoftext|im_end|im_start|end_of_(?:text|turn)|eos|eot|stop)\\|?>", "")
+                .replaceAll("</?s>", "")
+                .replaceAll("<DONE>", "")
+                .replaceAll("```(?:json|text)?\\s*", "")
+                .replaceAll("\\s*```", "")
+                .trim();
+        return out;
+    }
+
+    /** Apply {@link #stripLLMArtifacts} to every CTA text + sourceQuote in place. */
+    private static List<Cta> scrubCtas(List<Cta> ctas) {
+        if (ctas == null || ctas.isEmpty()) return ctas;
+        java.util.List<Cta> out = new java.util.ArrayList<>(ctas.size());
+        for (Cta c : ctas) {
+            out.add(new Cta(
+                    stripLLMArtifacts(c.text()),
+                    c.dueDate(),
+                    c.type(),
+                    c.priority(),
+                    stripLLMArtifacts(c.sourceQuote())));
+        }
+        return out;
+    }
+
+    private static ReplyDrafts scrubDrafts(ReplyDrafts d) {
+        if (d == null) return null;
+        return new ReplyDrafts(
+                stripLLMArtifacts(d.formal()),
+                stripLLMArtifacts(d.friendly()),
+                stripLLMArtifacts(d.brief()));
+    }
 
     private static List<Badge> parseBadges(List<String> raw) {
         if (raw == null || raw.isEmpty()) return List.of();
