@@ -1,6 +1,7 @@
 package ai.intelliswarm.intellimailbox;
 
 import ai.intelliswarm.intellimailbox.gmail.RealChromeLauncher;
+import ai.intelliswarm.intellimailbox.settings.SettingsStore;
 import ai.intelliswarm.swarmai.tool.common.BrowserTool;
 import ai.intelliswarm.swarmai.tool.common.BrowserToolProperties;
 import org.slf4j.Logger;
@@ -51,6 +52,11 @@ public class IntelliMailboxApplication {
         setIfAbsent("swarmai.tools.browser.enabled", "true");
         setIfAbsent("swarmai.tools.browser.user-data-dir", defaultProfile.toString());
         setIfAbsent("swarmai.tools.browser.allowed-hosts", "google.com,gmail.com");
+
+        // Apply the user's persisted Settings-modal choices BEFORE the hardcoded
+        // "ollama" default below, so a saved provider=openai actually wins.
+        // setIfAbsent semantics inside the store keep -Dspring.profiles.active=… authoritative.
+        SettingsStore.applyAsSystemProperties();
 
         // Privacy-by-default. SPRING_PROFILES_ACTIVE=openai-mini flips to gpt-4o-mini.
         setIfAbsent("spring.profiles.active", "ollama");

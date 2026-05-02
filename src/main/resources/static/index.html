@@ -681,6 +681,306 @@
       text-align: center; color: var(--text-muted); padding: 60px 20px;
     }
 
+    /* ---- Active-LLM pill in the page header ------------------- */
+    .active-llm-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 0.78rem; color: var(--text-secondary);
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+    }
+    .active-llm-pill code {
+      font-family: var(--font-mono); font-size: 0.74rem;
+      color: var(--text-heading);
+    }
+    .active-llm-pill .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted);
+    }
+    .active-llm-pill .pill-sep { color: var(--text-muted); opacity: 0.6; }
+    .active-llm-pill.local {
+      border-color: var(--color-success);
+      color: var(--text-primary);
+    }
+    .active-llm-pill.local .dot {
+      background: var(--color-success); box-shadow: 0 0 6px var(--color-success);
+    }
+    .active-llm-pill.remote {
+      border-color: var(--color-warning);
+      color: var(--text-primary);
+    }
+    .active-llm-pill.remote .dot {
+      background: var(--color-warning); box-shadow: 0 0 6px var(--color-warning);
+    }
+    .active-llm-pill:hover { background: var(--bg-card-hover); }
+
+    /* ---- Settings modal (extends .modal-card) ----------------- */
+    .settings-card {
+      max-width: 1080px;
+      width: 100%;
+    }
+    .settings-layout {
+      display: grid; grid-template-columns: 240px 1fr;
+      gap: 0; flex: 1; min-height: 0; overflow: hidden;
+    }
+    @media (max-width: 720px) {
+      .settings-layout { grid-template-columns: 1fr; }
+      .settings-rail { max-height: 220px; border-right: none !important;
+                       border-bottom: 1px solid var(--border-section); }
+    }
+    .settings-rail {
+      border-right: 1px solid var(--border-section);
+      padding: 10px 8px; overflow: auto;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .rail-item {
+      all: unset; cursor: pointer; display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 8px;
+      border: 1px solid transparent;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .rail-item:hover { background: var(--bg-card-hover); }
+    .rail-item.selected {
+      background: var(--accent-dim); border-color: var(--accent);
+    }
+    .rail-item.is-active .rail-label::after {
+      content: ' ✓'; color: var(--color-success); font-weight: 700;
+    }
+    .rail-icon { font-size: 1.1rem; }
+    .rail-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .rail-label {
+      font-size: 0.88rem; font-weight: 600; color: var(--text-heading);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rail-sub {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.7rem; color: var(--text-muted);
+    }
+    .kind-pill {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; padding: 1px 6px; border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+    .kind-pill.kind-local  { color: var(--color-success); border-color: var(--color-success); }
+    .kind-pill.kind-remote { color: var(--color-warning); border-color: var(--color-warning); }
+    .ready-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--color-success); box-shadow: 0 0 4px var(--color-success);
+    }
+    .ready-dot.off { background: var(--text-muted); box-shadow: none; }
+    .active-tag {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em;
+      padding: 1px 6px; border-radius: 999px;
+      background: var(--accent); color: #fff;
+    }
+    .active-tag.big { font-size: 0.78rem; padding: 4px 12px; }
+    .dirty-tag {
+      margin-left: 8px; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px;
+      background: rgba(255, 173, 102, 0.15);
+      color: var(--color-warning); border: 1px solid var(--color-warning);
+    }
+
+    .settings-pane-wrap {
+      padding: 16px 24px; overflow: auto; min-width: 0;
+    }
+    .pane-head {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+      margin-bottom: 14px;
+    }
+    .pane-title {
+      font-size: 1.05rem; font-weight: 600; color: var(--text-heading);
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .pane-desc { font-size: 0.84rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
+    .pane-links { font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; }
+    .pane-links a { color: var(--accent); text-decoration: none; }
+    .pane-links a:hover { color: var(--accent-2); }
+
+    .settings-note {
+      background: var(--accent-dim);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--accent);
+      padding: 10px 14px; border-radius: 6px;
+      font-size: 0.82rem; color: var(--text-secondary);
+      margin-bottom: 14px; line-height: 1.5;
+    }
+
+    .settings-active {
+      margin: 12px 24px 0 24px;
+      padding: 10px 14px; border-radius: 8px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      font-size: 0.84rem;
+    }
+    .settings-active.local  { border-left: 3px solid var(--color-success); }
+    .settings-active.remote { border-left: 3px solid var(--color-warning); }
+    .settings-active code {
+      font-family: var(--font-mono); font-size: 0.78rem;
+      color: var(--text-heading);
+      background: var(--bg-card); padding: 1px 6px; border-radius: 4px;
+    }
+    .active-pill {
+      font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em;
+      padding: 3px 10px; border-radius: 999px;
+      border: 1px solid; white-space: nowrap;
+    }
+    .active-pill.local  { color: var(--color-success); border-color: var(--color-success); }
+    .active-pill.remote { color: var(--color-warning); border-color: var(--color-warning); }
+
+    .chip-row {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
+    }
+    .chip {
+      all: unset; cursor: pointer;
+      font-family: var(--font-mono); font-size: 0.76rem;
+      padding: 3px 8px; border-radius: 999px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle); color: var(--text-secondary);
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    .env-details {
+      margin-top: 14px;
+      border: 1px solid var(--border-subtle); border-radius: 8px;
+      padding: 8px 12px; background: var(--bg-input);
+    }
+    .env-details summary {
+      cursor: pointer; font-size: 0.82rem; color: var(--text-secondary);
+      list-style: none;
+    }
+    .env-details summary::before { content: '▸ '; color: var(--text-muted); }
+    .env-details[open] summary::before { content: '▾ '; }
+    .env-table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 0.78rem; }
+    .env-table td { padding: 3px 0; vertical-align: top; }
+    .env-table td.env-key { color: var(--text-muted); width: 80px; }
+    .env-table code {
+      font-family: var(--font-mono); font-size: 0.78rem;
+      background: var(--bg-card); padding: 1px 6px; border-radius: 4px;
+      color: var(--text-heading);
+    }
+
+    .settings-row {
+      display: grid; gap: 6px; margin-bottom: 16px;
+    }
+    .settings-row label {
+      font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);
+      letter-spacing: 0.02em;
+    }
+    .settings-row .help {
+      font-size: 0.75rem; color: var(--text-muted); line-height: 1.45;
+    }
+    .settings-row input[type="text"],
+    .settings-row input[type="password"],
+    .settings-row select {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px; padding: 8px 10px;
+      font-family: var(--font-sans); font-size: 0.88rem;
+      color: var(--text-primary);
+    }
+    .settings-row input:focus, .settings-row select:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-glow);
+    }
+
+    .model-grid {
+      display: grid; gap: 8px;
+    }
+    .model-card {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px; padding: 10px 14px;
+      background: var(--bg-input);
+      display: grid; grid-template-columns: 1fr auto; gap: 4px 12px;
+      align-items: center;
+    }
+    .model-card.recommended { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
+    .model-card.too-big { opacity: 0.55; }
+    .model-card .model-name {
+      font-family: var(--font-mono); font-size: 0.88rem; color: var(--text-heading);
+      font-weight: 600;
+    }
+    .model-card .model-meta {
+      font-size: 0.74rem; color: var(--text-muted);
+    }
+    .model-card .model-note {
+      grid-column: 1 / -1;
+      font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4;
+    }
+    .model-card .badge-pill {
+      font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em;
+      text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+      background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent);
+    }
+    .model-card .badge-warn {
+      font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em;
+      text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+      background: transparent; color: var(--color-warning); border: 1px solid var(--color-warning);
+    }
+
+    .copy-row {
+      display: flex; align-items: stretch; gap: 0;
+      border: 1px solid var(--border-subtle); border-radius: 6px;
+      background: var(--bg-input); overflow: hidden;
+    }
+    .copy-row code {
+      flex: 1; padding: 8px 10px; font-family: var(--font-mono);
+      font-size: 0.82rem; color: var(--text-primary);
+      white-space: nowrap; overflow: auto;
+    }
+    .copy-row button.copy-btn {
+      all: unset; cursor: pointer;
+      padding: 0 12px; font-size: 0.78rem; font-weight: 600;
+      color: var(--text-secondary); border-left: 1px solid var(--border-subtle);
+      background: transparent;
+    }
+    .copy-row button.copy-btn:hover { background: var(--bg-card-hover); color: var(--accent); }
+    .copy-row button.copy-btn.copied { color: var(--color-success); }
+
+    .ollama-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.78rem; padding: 4px 10px; border-radius: 999px;
+      background: var(--bg-input); border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    .ollama-status .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted);
+    }
+    .ollama-status.ok    .dot { background: var(--color-success); box-shadow: 0 0 6px var(--color-success); }
+    .ollama-status.fail  .dot { background: var(--color-error);   box-shadow: 0 0 6px var(--color-error); }
+
+    .settings-actions {
+      display: flex; gap: 10px; justify-content: flex-end;
+      padding: 14px 24px; border-top: 1px solid var(--border-section);
+    }
+    .settings-banner {
+      margin: 0 24px 14px 24px;
+      padding: 10px 14px; border-radius: 8px;
+      background: rgba(102, 187, 106, 0.10);
+      border: 1px solid var(--color-success);
+      color: var(--text-primary); font-size: 0.84rem;
+    }
+    .settings-banner.warn {
+      background: rgba(255, 173, 102, 0.10); border-color: var(--color-warning);
+    }
+    .settings-banner.err {
+      background: rgba(255, 110, 110, 0.10); border-color: var(--color-error);
+    }
+
+    .install-block {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle); border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 12px;
+    }
+    .install-block h5 {
+      margin: 0 0 8px 0; font-size: 0.78rem; font-weight: 700;
+      letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent);
+    }
+    .install-block .step {
+      font-size: 0.82rem; color: var(--text-secondary); margin: 6px 0 4px 0;
+    }
+    .install-block a { color: var(--accent); text-decoration: none; }
+    .install-block a:hover { color: var(--accent-2); }
+
     /* Make whole row clickable, including digest rows. The reprocess and
        inject buttons stop propagation to keep their own click semantics. */
     .email .email-header { cursor: pointer; }
@@ -705,6 +1005,7 @@
       <button type="button" data-theme-value="intelliswarm" aria-pressed="true" title="Intelliswarm theme">✦ Intelliswarm</button>
       <button type="button" data-theme-value="light" aria-pressed="false" title="Light theme">☀ Light</button>
     </div>
+    <span id="active-llm-pill" class="active-llm-pill" style="display:none" title="Open Settings"></span>
     <div class="status"><span class="dot"></span><span id="status-text">Idle</span></div>
   </header>
 
@@ -719,6 +1020,7 @@
       <input id="search-input" type="search" placeholder="Search sender / subject / summary…" autocomplete="off" />
       <span class="kbd" title="Cmd/Ctrl-K to focus">⌘K</span>
     </div>
+    <button class="secondary" id="btn-settings" title="LLM settings (Ollama / OpenAI)">⚙ Settings</button>
     <button class="secondary" id="btn-help" title="Keyboard shortcuts (?)">?</button>
     <span class="meta" id="meta">No inbox loaded yet</span>
   </div>
@@ -742,6 +1044,7 @@
   </main>
   <div id="modal-mount"></div>
   <div id="help-mount"></div>
+  <div id="settings-mount"></div>
 
   <footer>
     Built with <a href="https://intelliswarm.ai">intelliswarm</a> · BrowserTool ⚙ + local LLM 🧠 · Analysis processing stays on your laptop
@@ -1825,6 +2128,525 @@ function showHelp() {
 document.querySelector('#btn-help')?.addEventListener('click', showHelp);
 
 // ============================================================
+// Settings modal — provider catalog (Ollama / OpenAI / Anthropic /
+// Groq / Mistral / DeepSeek / OpenRouter / Azure / LM Studio /
+// LocalAI / Custom OpenAI-compatible).
+// Edits never leave the laptop until the user clicks Save; the modal
+// stages everything in a draft object.
+// ============================================================
+const settingsMount = document.querySelector('#settings-mount');
+
+// Live snapshot of /api/settings — populated on open, mutated on edits, posted on Save.
+const settingsState = {
+  data: null,           // raw GET /api/settings response
+  draft: null,          // { activeProvider, providers: { id: { baseUrl, apiKey, model } } }
+  selectedTab: null,    // currently visible provider id in the right pane
+  ollamaTags: null,     // last /api/settings/ollama/tags response (model names installed)
+};
+
+async function openSettings() {
+  settingsMount.innerHTML = `
+    <div class="modal-backdrop" data-settings-backdrop>
+      <div class="modal-card settings-card" id="settings-card">
+        <button class="modal-close" data-settings-close title="Close (Esc)">×</button>
+        <div class="modal-loading"><div class="spinner" style="margin:0 auto 10px"></div>Loading settings…</div>
+      </div>
+    </div>`;
+  settingsMount.querySelector('[data-settings-backdrop]')?.addEventListener('click', (e) => {
+    if (e.target.matches('[data-settings-backdrop]')) closeSettings();
+  });
+  settingsMount.querySelector('[data-settings-close]')?.addEventListener('click', closeSettings);
+
+  let data;
+  try {
+    const res = await fetch('/api/settings');
+    data = await res.json();
+  } catch (e) {
+    settingsMount.querySelector('.modal-card').innerHTML =
+      `<div class="modal-loading">Failed to load settings: ${escapeHtml(String(e))}</div>`;
+    return;
+  }
+  settingsState.data = data;
+  settingsState.draft = {
+    activeProvider: data.activeProvider,
+    providers: Object.fromEntries((data.providers || []).map(p => [p.id, {
+      baseUrl: p.config?.baseUrl ?? '',
+      // Pre-fill the input with the masked sentinel when a key is saved.
+      // The backend treats anything containing the mask glyph as "no change".
+      apiKey:  p.config?.apiKeySet ? (p.config.apiKeyMasked || '') : '',
+      model:   p.config?.model ?? '',
+    }])),
+  };
+  settingsState.selectedTab = data.activeProvider;
+  renderSettings();
+  // Live-probe the Ollama base URL so the right-rail status pill is accurate
+  // even before the user clicks the Ollama tab.
+  refreshOllamaStatus();
+}
+
+function closeSettings() { settingsMount.innerHTML = ''; }
+
+// ------- helpers that operate on the in-memory draft -------------------
+function settingsDraftFor(id) {
+  const d = settingsState.draft;
+  if (!d.providers[id]) d.providers[id] = { baseUrl: '', apiKey: '', model: '' };
+  return d.providers[id];
+}
+function settingsCatalogFor(id) {
+  return (settingsState.data.providers || []).find(p => p.id === id);
+}
+function setActiveProvider(id) {
+  settingsState.draft.activeProvider = id;
+  // Re-render only the rail + active banner, keep the right pane intact.
+  renderSettingsRail();
+  renderSettingsActiveBanner();
+}
+
+// ------- rendering ------------------------------------------------------
+
+function renderSettings() {
+  const data = settingsState.data;
+  const sys  = data.system || {};
+  const card = settingsMount.querySelector('#settings-card');
+  card.innerHTML = `
+    <button class="modal-close" data-settings-close title="Close (Esc)">×</button>
+    <div class="modal-head">
+      <span class="modal-subject">LLM settings</span>
+      <span class="modal-sender">
+        Configure who analyzes your inbox. Saves to <code>${escapeHtml(data.settingsPath || '')}</code> ·
+        applies on the next app start.
+      </span>
+      <div class="modal-meta">
+        <span>Active profile: <b>${escapeHtml(data.activeProfile || '')}</b></span>
+        <span>Detected: <b>${escapeHtml(String(sys.ramGb ?? '?'))} GB RAM</b> · ${escapeHtml(String(sys.cpuCores ?? '?'))} cores · ${escapeHtml(sys.arch || '')} · ${escapeHtml(sys.os || '')}</span>
+      </div>
+    </div>
+
+    <div id="settings-active-banner"></div>
+    <div id="settings-banner-mount"></div>
+
+    <div class="settings-layout">
+      <div class="settings-rail" id="settings-rail"></div>
+      <div class="settings-pane-wrap" id="settings-pane-wrap"></div>
+    </div>
+
+    <div class="settings-actions">
+      <button type="button" class="secondary" data-settings-close>Cancel</button>
+      <button type="button" id="settings-save-btn">Save</button>
+    </div>
+  `;
+  card.querySelectorAll('[data-settings-close]').forEach(b => b.addEventListener('click', closeSettings));
+  card.querySelector('#settings-save-btn')?.addEventListener('click', saveSettings);
+  renderSettingsActiveBanner();
+  renderSettingsRail();
+  renderSettingsPane(settingsState.selectedTab);
+}
+
+function renderSettingsActiveBanner() {
+  const card = settingsMount.querySelector('#settings-card');
+  const mount = card?.querySelector('#settings-active-banner');
+  if (!mount) return;
+  const data = settingsState.data;
+  const draftActive = settingsState.draft.activeProvider;
+  const original = data.activeProvider;
+  const provider = (data.providers || []).find(p => p.id === draftActive);
+  if (!provider) { mount.innerHTML = ''; return; }
+  const cfg = settingsState.draft.providers[draftActive] || {};
+  const local = provider.isLocal;
+  const kindLabel = providerKindLabel(provider);
+  const dirty = draftActive !== original;
+  mount.innerHTML = `
+    <div class="settings-active ${local ? 'local' : 'remote'}">
+      <span class="active-pill ${local ? 'local' : 'remote'}" title="${local ? 'Runs on this machine — emails never leave your laptop.' : 'Sends email content to a third-party API.'}">
+        ${local ? '🔒 Local' : '☁ Remote'}
+      </span>
+      <span class="active-text">
+        Active: <b>${escapeHtml(provider.icon || '')} ${escapeHtml(provider.label)}</b>
+        · model <code>${escapeHtml(cfg.model || provider.defaultModel || '(none)')}</code>
+        · ${escapeHtml(kindLabel)}
+        ${dirty ? '<span class="dirty-tag">unsaved</span>' : ''}
+      </span>
+    </div>`;
+}
+
+function renderSettingsRail() {
+  const rail = settingsMount.querySelector('#settings-rail');
+  if (!rail) return;
+  const draft = settingsState.draft;
+  const items = (settingsState.data.providers || []).map(p => {
+    const isActive   = draft.activeProvider === p.id;
+    const isSelected = settingsState.selectedTab === p.id;
+    const cfg = draft.providers[p.id] || {};
+    const ready = isProviderReady(p, cfg);
+    return `
+      <button type="button" class="rail-item ${isSelected ? 'selected' : ''} ${isActive ? 'is-active' : ''}" data-rail-id="${escapeHtml(p.id)}">
+        <span class="rail-icon">${escapeHtml(p.icon || '·')}</span>
+        <span class="rail-body">
+          <span class="rail-label">${escapeHtml(p.label)}</span>
+          <span class="rail-sub">
+            <span class="kind-pill ${p.isLocal ? 'kind-local' : 'kind-remote'}">${escapeHtml(providerKindLabel(p))}</span>
+            ${ready ? '<span class="ready-dot" title="configured"></span>' : '<span class="ready-dot off" title="not yet configured"></span>'}
+            ${isActive ? '<span class="active-tag">active</span>' : ''}
+          </span>
+        </span>
+      </button>`;
+  }).join('');
+  rail.innerHTML = items;
+  rail.querySelectorAll('[data-rail-id]').forEach(b =>
+    b.addEventListener('click', () => {
+      settingsState.selectedTab = b.dataset.railId;
+      renderSettingsRail();
+      renderSettingsPane(settingsState.selectedTab);
+    }));
+}
+
+function isProviderReady(p, cfg) {
+  const hasModel = !!(cfg && cfg.model) || !!p.defaultModel;
+  if (!p.requiresApiKey) return hasModel;
+  // If a key is saved, the user's draft.apiKey will hold the masked sentinel
+  // (containing "…"). Treat that as "key present" too.
+  const hasKey = !!(cfg && cfg.apiKey && cfg.apiKey.length > 0);
+  return hasModel && hasKey;
+}
+
+function providerKindLabel(p) {
+  switch (p.kind) {
+    case 'local':       return 'local · runs on your machine';
+    case 'self-hosted': return 'self-hosted · OpenAI-compatible';
+    case 'cloud':       return 'cloud · third-party API';
+    case 'custom':      return 'custom OpenAI-compatible endpoint';
+    default:            return p.kind || '';
+  }
+}
+
+function renderSettingsPane(id) {
+  const wrap = settingsMount.querySelector('#settings-pane-wrap');
+  if (!wrap) return;
+  const provider = settingsCatalogFor(id);
+  const cfg = settingsDraftFor(id);
+  if (!provider) { wrap.innerHTML = '<div class="modal-loading">Provider not found.</div>'; return; }
+  const isOllama = provider.id === 'ollama';
+  const draftActive = settingsState.draft.activeProvider;
+  const isActive = draftActive === provider.id;
+
+  // Per-provider helper links
+  const links = [];
+  if (provider.homepage)        links.push(`<a href="${escapeHtml(provider.homepage)}" target="_blank" rel="noopener">homepage</a>`);
+  if (provider.signupUrl)       links.push(`<a href="${escapeHtml(provider.signupUrl)}" target="_blank" rel="noopener">get an API key</a>`);
+  if (provider.modelCatalogUrl) links.push(`<a href="${escapeHtml(provider.modelCatalogUrl)}" target="_blank" rel="noopener">model catalog</a>`);
+
+  const suggested = (provider.suggestedModels || []).map(m =>
+    `<button type="button" class="chip" data-pick-model="${escapeHtml(m)}">${escapeHtml(m)}</button>`).join('');
+
+  // Transparency: show the env-var override names so power users know how to
+  // pin any of these from the launch command line.
+  const env = provider.envVars || {};
+  const envRows = Object.entries(env).map(([k, v]) =>
+    `<tr><td class="env-key">${escapeHtml(k)}</td><td><code>${escapeHtml(v)}</code></td></tr>`).join('');
+
+  wrap.innerHTML = `
+    <div class="pane-head">
+      <div>
+        <div class="pane-title">${escapeHtml(provider.icon || '·')} ${escapeHtml(provider.label)}
+          <span class="kind-pill ${provider.isLocal ? 'kind-local' : 'kind-remote'}">${escapeHtml(providerKindLabel(provider))}</span>
+        </div>
+        <div class="pane-desc">${escapeHtml(provider.description || '')}</div>
+        ${links.length ? `<div class="pane-links">${links.join(' · ')}</div>` : ''}
+      </div>
+      <div class="pane-head-right">
+        ${isActive
+          ? `<span class="active-tag big">✓ Active</span>`
+          : `<button type="button" id="set-active-btn">Set as active</button>`}
+      </div>
+    </div>
+
+    ${provider.setupNotes ? `<div class="settings-note">${escapeHtml(provider.setupNotes)}</div>` : ''}
+
+    <div class="settings-row">
+      <label>Base URL</label>
+      <input type="text" id="cfg-base-url" value="${escapeHtml(cfg.baseUrl || '')}" placeholder="${escapeHtml(provider.defaultBaseUrl || '')}" />
+      <div class="help">All requests for this provider hit this endpoint. ${provider.defaultBaseUrl ? `Default: <code>${escapeHtml(provider.defaultBaseUrl)}</code>.` : ''}</div>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:4px;">
+        <span class="ollama-status" id="provider-status"><span class="dot"></span><span id="provider-status-text">${isOllama ? 'Checking…' : 'Click Test to probe'}</span></span>
+        <button type="button" class="secondary" id="provider-test-btn" style="padding:4px 12px; font-size:0.78rem;">Test connection</button>
+      </div>
+    </div>
+
+    ${provider.requiresApiKey ? `
+    <div class="settings-row">
+      <label>API key</label>
+      <input type="password" id="cfg-api-key" value="${escapeHtml(cfg.apiKey || '')}" placeholder="sk-…" autocomplete="off" />
+      <div class="help">
+        Stored locally only at <code>${escapeHtml(settingsState.data.settingsPath || '')}</code>.
+        ${settingsCatalogFor(id)?.config?.apiKeySet ? `A key is currently saved (<code>${escapeHtml(settingsCatalogFor(id).config.apiKeyMasked)}</code>) — leave the field as-is to keep it.` : ''}
+      </div>
+    </div>` : `
+    <div class="settings-row"><label>API key</label><div class="help">Not required for ${escapeHtml(provider.label)}.</div></div>
+    `}
+
+    <div class="settings-row">
+      <label>Model</label>
+      <input type="text" id="cfg-model" value="${escapeHtml(cfg.model || '')}" placeholder="${escapeHtml(provider.defaultModel || '')}" />
+      ${suggested ? `<div class="chip-row">${suggested}</div>` : ''}
+      <div class="help">Pick a suggestion or type any model the provider exposes.</div>
+    </div>
+
+    ${isOllama ? renderOllamaExtras() : ''}
+
+    <details class="env-details">
+      <summary>Power-user: environment-variable overrides</summary>
+      <div class="help" style="margin-top:6px">
+        Pin any field from the command line — these win over the saved config:
+      </div>
+      <table class="env-table"><tbody>${envRows}</tbody></table>
+    </details>
+  `;
+
+  // Wire inputs → draft
+  const baseUrlEl = wrap.querySelector('#cfg-base-url');
+  const apiKeyEl  = wrap.querySelector('#cfg-api-key');
+  const modelEl   = wrap.querySelector('#cfg-model');
+  baseUrlEl?.addEventListener('input', () => { cfg.baseUrl = baseUrlEl.value; });
+  apiKeyEl?.addEventListener('input',  () => { cfg.apiKey  = apiKeyEl.value; });
+  modelEl?.addEventListener('input',   () => {
+    cfg.model = modelEl.value;
+    renderSettingsActiveBanner();
+  });
+
+  wrap.querySelectorAll('[data-pick-model]').forEach(b => b.addEventListener('click', () => {
+    const v = b.dataset.pickModel;
+    if (modelEl) { modelEl.value = v; cfg.model = v; }
+    renderSettingsActiveBanner();
+  }));
+
+  wrap.querySelector('#set-active-btn')?.addEventListener('click', () => setActiveProvider(provider.id));
+  wrap.querySelector('#provider-test-btn')?.addEventListener('click', () => testProvider(provider.id));
+
+  if (isOllama) {
+    wireOllamaExtras(wrap);
+    refreshOllamaStatus();
+  } else {
+    // Non-Ollama: show idle status until user clicks Test.
+    const statusEl  = wrap.querySelector('#provider-status');
+    const statusTxt = wrap.querySelector('#provider-status-text');
+    statusEl?.classList.remove('ok', 'fail');
+    if (statusTxt) statusTxt.textContent = 'Click Test to probe';
+  }
+}
+
+function renderOllamaExtras() {
+  const sys = settingsState.data.system || {};
+  const recommended = sys.recommendedModels || [];
+  const inst = sys.installInstructions || {};
+  const modelsHtml = recommended.map(m => `
+    <div class="model-card ${m.recommended ? 'recommended' : ''} ${m.fits ? '' : 'too-big'}" data-model-name="${escapeHtml(m.model)}">
+      <div>
+        <div class="model-name">${escapeHtml(m.model)}</div>
+        <div class="model-meta">~${m.sizeGb} GB on disk · needs ≥${m.ramGbMin} GB RAM</div>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        ${m.recommended ? '<span class="badge-pill">recommended</span>' : ''}
+        ${m.fits ? '' : '<span class="badge-warn">low RAM</span>'}
+        <button type="button" class="secondary" data-use-model="${escapeHtml(m.model)}" style="padding:4px 10px; font-size:0.78rem;">Use</button>
+      </div>
+      <div class="model-note">${escapeHtml(m.note)}</div>
+      <div class="copy-row" style="grid-column: 1 / -1;">
+        <code>${escapeHtml(m.pullCommand)}</code>
+        <button type="button" class="copy-btn" data-copy="${escapeHtml(m.pullCommand)}">Copy</button>
+      </div>
+    </div>`).join('');
+
+  return `
+    <div class="settings-row">
+      <label>Recommended models for this machine <span class="help" style="font-weight:400">— filtered by your ${escapeHtml(String(sys.ramGb ?? '?'))} GB RAM</span></label>
+      <div class="model-grid">${modelsHtml}</div>
+      <div class="help" id="installed-models-line" style="margin-top:6px">Installed locally: <span id="installed-models">(probing…)</span></div>
+    </div>
+
+    <details class="env-details">
+      <summary>How to install Ollama on ${escapeHtml(sys.os || 'this machine')}</summary>
+      <div class="install-block" style="margin-top:8px">
+        <div class="step">1. Install:</div>
+        <div class="copy-row"><code>${escapeHtml(inst.primary || '')}</code><button type="button" class="copy-btn" data-copy="${escapeHtml(inst.primary || '')}">Copy</button></div>
+        ${inst.alternative ? `<div class="step" style="margin-top:8px">Or: ${escapeHtml(inst.alternative)}</div>` : ''}
+        <div class="step" style="margin-top:8px">2. Verify:</div>
+        <div class="copy-row"><code>${escapeHtml(inst.verify || '')}</code><button type="button" class="copy-btn" data-copy="${escapeHtml(inst.verify || '')}">Copy</button></div>
+        <div class="step" style="margin-top:8px">3. Start the server:</div>
+        <div class="copy-row"><code>${escapeHtml(inst.startServer || '')}</code><button type="button" class="copy-btn" data-copy="${escapeHtml(inst.startServer || '')}">Copy</button></div>
+        <div class="step" style="margin-top:10px">More: <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a> · <a href="https://ollama.com/library" target="_blank" rel="noopener">model library</a></div>
+      </div>
+    </details>`;
+}
+
+function wireOllamaExtras(scope) {
+  // "Use this model" buttons in the recommended-models grid.
+  scope.querySelectorAll('[data-use-model]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.useModel;
+      const input = scope.querySelector('#cfg-model');
+      const cfg = settingsDraftFor('ollama');
+      if (input) input.value = name;
+      cfg.model = name;
+      scope.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+      btn.closest('.model-card')?.classList.add('selected');
+      renderSettingsActiveBanner();
+    });
+  });
+  // Copy-to-clipboard buttons on `ollama pull …` commands and install steps.
+  scope.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1400);
+      } catch (e) { btn.textContent = 'Press Ctrl+C'; }
+    });
+  });
+}
+
+// Live probe — fills the right-pane status pill + "installed models" hint
+// when the Ollama tab is open. Safe to call when it isn't (no-ops).
+async function refreshOllamaStatus() {
+  const card = settingsMount.querySelector('.settings-card');
+  if (!card) return;
+  const statusEl  = card.querySelector('#provider-status');
+  const statusTxt = card.querySelector('#provider-status-text');
+  const installedEl = card.querySelector('#installed-models');
+  const cfg = settingsDraftFor('ollama');
+  const baseUrl = cfg.baseUrl?.trim() || '';
+  if (settingsState.selectedTab === 'ollama') {
+    statusEl?.classList.remove('ok', 'fail');
+    if (statusTxt) statusTxt.textContent = 'Checking…';
+    if (installedEl) installedEl.textContent = '(probing…)';
+  }
+  try {
+    const res = await fetch('/api/settings/ollama/tags?baseUrl=' + encodeURIComponent(baseUrl));
+    const data = await res.json();
+    settingsState.ollamaTags = data;
+    if (settingsState.selectedTab !== 'ollama') return;
+    if (data.reachable) {
+      statusEl?.classList.add('ok');
+      const n = data.models?.length || 0;
+      if (statusTxt) statusTxt.textContent = `Reachable · ${n} model${n === 1 ? '' : 's'} pulled`;
+      const names = (data.models || []).map(m => m.name);
+      installedEl.textContent = names.length ? names.join(', ') : '(none — pull one with the commands below)';
+      card.querySelectorAll('.model-card').forEach(c => {
+        const n2 = c.dataset.modelName;
+        if (n2 && names.includes(n2) && !c.querySelector('.badge-installed')) {
+          const pill = document.createElement('span');
+          pill.className = 'badge-pill badge-installed';
+          pill.textContent = 'installed';
+          c.querySelector('.model-name')?.parentElement?.appendChild(pill);
+        }
+      });
+    } else {
+      statusEl?.classList.add('fail');
+      if (statusTxt) statusTxt.textContent = 'Unreachable — is `ollama serve` running?';
+      installedEl.textContent = '(server unreachable)';
+    }
+  } catch (e) {
+    if (settingsState.selectedTab !== 'ollama') return;
+    statusEl?.classList.add('fail');
+    if (statusTxt) statusTxt.textContent = 'Probe failed';
+    if (installedEl) installedEl.textContent = '(error)';
+  }
+}
+
+async function testProvider(providerId) {
+  const card = settingsMount.querySelector('.settings-card');
+  if (!card) return;
+  const statusEl  = card.querySelector('#provider-status');
+  const statusTxt = card.querySelector('#provider-status-text');
+  if (providerId === 'ollama') return refreshOllamaStatus();
+  const cfg = settingsDraftFor(providerId);
+  const baseUrl = cfg.baseUrl?.trim() || '';
+  statusEl?.classList.remove('ok', 'fail');
+  if (statusTxt) statusTxt.textContent = 'Probing…';
+  try {
+    const res = await fetch('/api/settings/ping/' + encodeURIComponent(providerId)
+                + '?baseUrl=' + encodeURIComponent(baseUrl));
+    const data = await res.json();
+    if (data.reachable) {
+      statusEl?.classList.add('ok');
+      if (statusTxt) statusTxt.textContent = data.authChallenged
+            ? `Reachable · HTTP ${data.status} (auth required, that's expected)`
+            : `Reachable · HTTP ${data.status}`;
+    } else {
+      statusEl?.classList.add('fail');
+      if (statusTxt) statusTxt.textContent = `Unreachable: ${data.error || 'unknown'}`;
+    }
+  } catch (e) {
+    statusEl?.classList.add('fail');
+    if (statusTxt) statusTxt.textContent = 'Probe failed: ' + String(e);
+  }
+}
+
+async function saveSettings() {
+  const card = settingsMount.querySelector('.settings-card');
+  if (!card) return;
+  const banner = card.querySelector('#settings-banner-mount');
+  const setBanner = (cls, html) => { banner.innerHTML = `<div class="settings-banner ${cls}">${html}</div>`; };
+  const saveBtn = card.querySelector('#settings-save-btn');
+  saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(settingsState.draft),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setBanner('', `Saved to <code>${escapeHtml(data.savedTo || '')}</code>. <b>Restart Intelli-mailbox to apply</b> — the LLM client is wired at startup, so live changes don't take effect until next launch.`);
+      // Refresh the header pill from the server's authoritative summary.
+      if (data.active) updateActiveLlmPill(data.active);
+    } else {
+      setBanner('err', `Save failed: ${escapeHtml(data.reason || 'unknown')}`);
+    }
+  } catch (e) {
+    setBanner('err', `Save failed: ${escapeHtml(String(e))}`);
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Save';
+  }
+}
+
+document.querySelector('#btn-settings')?.addEventListener('click', openSettings);
+
+// ============================================================
+// Active-LLM pill in the main header (visible without opening Settings).
+// Always-on transparency: shows local-vs-remote + provider + model.
+// ============================================================
+function updateActiveLlmPill(active) {
+  const el = document.querySelector('#active-llm-pill');
+  if (!el || !active) return;
+  el.classList.remove('local', 'remote');
+  el.classList.add(active.isLocal ? 'local' : 'remote');
+  el.setAttribute('title', active.isLocal
+    ? `Local — runs on this machine. Endpoint: ${active.baseUrl}`
+    : `Remote — sends email content to ${active.baseUrl}`);
+  el.innerHTML = `
+    <span class="dot"></span>
+    <span class="pill-kind">${active.isLocal ? '🔒 Local' : '☁ Remote'}</span>
+    <span class="pill-sep">·</span>
+    <span class="pill-provider">${escapeHtml(active.icon || '')} ${escapeHtml(active.label)}</span>
+    <span class="pill-sep">·</span>
+    <span class="pill-model" title="model"><code>${escapeHtml(active.model || '')}</code></span>`;
+  el.style.display = 'inline-flex';
+  el.style.cursor = 'pointer';
+  el.onclick = openSettings;
+}
+
+(async function bootActiveLlmPill() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    if (data && data.active) updateActiveLlmPill(data.active);
+  } catch (e) { /* silent — pill stays hidden if backend unreachable */ }
+})();
+
+// ============================================================
 // Keyboard shortcuts (window-level)
 // ============================================================
 window.addEventListener('keydown', (ev) => {
@@ -1839,6 +2661,7 @@ window.addEventListener('keydown', (ev) => {
     return;
   }
   if (ev.key === 'Escape') {
+    if (settingsMount.firstChild) { closeSettings(); return; }
     if (modalMount.firstChild) { closeEmailModal(); return; }
     if (helpMount.firstChild)  { helpMount.innerHTML = ''; return; }
     if (state.searchTerm)      { searchInput.value = ''; state.searchTerm = ''; applySearchFilter(); return; }

@@ -1,20 +1,25 @@
 # ============================================================================
-# OpenAI-compatible profile — OpenAI + every drop-in vendor (Groq, DeepSeek,
-# Mistral, OpenRouter, Azure OpenAI, LM Studio, LocalAI, vLLM, …)
+# Anthropic Claude profile — opt-in, sharper than gpt-4o-mini for analysis tasks
 # ============================================================================
-# Activate with: SPRING_PROFILES_ACTIVE=openai-mini OPENAI_API_KEY=sk-... ./run.sh
-# Or use the in-app Settings modal — it picks the right profile + base URL
-# for whichever provider the user activates.
+# Activate via the Settings modal (Anthropic tab) or:
+#   SPRING_PROFILES_ACTIVE=anthropic ANTHROPIC_API_KEY=sk-ant-... ./run.sh
+# The Anthropic Spring AI starter is brought in transitively by swarmai, so
+# no pom.xml change is needed — we just stop excluding it in this profile.
 # ============================================================================
 spring:
   autoconfigure:
     # NOTE: this list REPLACES the base application.yml list (Spring Boot doesn't merge
     # list-typed properties across profiles). Keep the vector-store + JPA excludes here too.
     exclude:
-      # Suppress Ollama + Anthropic starters — only OpenAI active in this profile.
+      # Suppress Ollama + OpenAI starters — only Anthropic active in this profile.
       - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
       - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
-      - org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
       # swarmai-tools transitively pulls Chroma + PgVector starters; both register a
       # bean named "vectorStore" → BeanDefinitionOverrideException at startup.
       - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
@@ -24,17 +29,14 @@ spring:
       - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
       - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
   ai:
-    openai:
-      api-key: ${OPENAI_API_KEY:}
-      # Base URL is a Settings-modal knob. Defaults to OpenAI; flip to
-      # https://api.groq.com/openai/v1, https://api.deepseek.com/v1,
-      # http://localhost:1234/v1 (LM Studio), etc. for any drop-in provider.
-      base-url: ${SPRING_AI_OPENAI_BASE_URL:https://api.openai.com}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      base-url: ${SPRING_AI_ANTHROPIC_BASE_URL:https://api.anthropic.com}
       chat:
         options:
-          model: ${SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL:gpt-4o-mini}
+          model: ${SPRING_AI_ANTHROPIC_CHAT_OPTIONS_MODEL:claude-haiku-4-5}
           temperature: 0.1
 
 swarmai:
   workflow:
-    model: ${SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL:gpt-4o-mini}
+    model: ${SPRING_AI_ANTHROPIC_CHAT_OPTIONS_MODEL:claude-haiku-4-5}
