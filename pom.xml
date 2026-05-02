@@ -119,6 +119,14 @@
                 <version>3.13.0</version>
                 <configuration>
                     <release>${java.version}</release>
+                    <!-- Preserve parameter names in .class files. Without this,
+                         Spring's @PathVariable / @RequestParam can't infer the
+                         parameter name from reflection on JDK 21+ and throws
+                         "Name for argument of type [String] not specified" at
+                         request time. Belt-and-braces with explicit ("id")
+                         names on @PathVariable, but this fixes it for any
+                         future controller method without per-method care. -->
+                    <parameters>true</parameters>
                 </configuration>
             </plugin>
             <plugin>

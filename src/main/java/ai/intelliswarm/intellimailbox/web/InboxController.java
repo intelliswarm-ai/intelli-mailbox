@@ -103,7 +103,7 @@ public class InboxController {
     }
 
     @PostMapping("/email/{id}/reprocess")
-    public ResponseEntity<Map<String, Object>> reprocess(@PathVariable String id) {
+    public ResponseEntity<Map<String, Object>> reprocess(@PathVariable("id") String id) {
         // We only have the inbox-position id; refresh re-scrapes and finds the matching item.
         for (InboxItem item : pipeline.refresh()) {
             if (item.id().equals(id)) {
@@ -128,7 +128,7 @@ public class InboxController {
     @PostMapping(path = "/email/{id}/inject-draft",
                  consumes = { MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE })
     public ResponseEntity<Map<String, Object>> injectDraft(
-            @PathVariable String id,
+            @PathVariable("id") String id,
             @RequestBody(required = false) Map<String, Object> body) {
         // HashMap (not Map.of) so null values never NPE.
         java.util.HashMap<String, Object> resp = new java.util.HashMap<>();
@@ -190,7 +190,7 @@ public class InboxController {
      * is a fast read — never re-scrapes Gmail.
      */
     @GetMapping("/email/{id}/details")
-    public ResponseEntity<Map<String, Object>> details(@PathVariable String id) {
+    public ResponseEntity<Map<String, Object>> details(@PathVariable("id") String id) {
         java.util.HashMap<String, Object> out = new java.util.HashMap<>();
         out.put("id", id);
         EnrichedEmail e = pipeline.getCached(id).orElse(null);
@@ -208,6 +208,60 @@ public class InboxController {
     @GetMapping("/health")
     public Map<String, Object> health() {
         return Map.of("ok", true, "cached", pipeline.snapshot().size());
+    }
+
+    /**
+     * Debug-view endpoint: returns the FULL raw data we have per email — the
+     * InboxItem metadata Gmail's listing surfaced PLUS the verbatim body bytes
+     * we scraped. Powers the in-app "Debug" view tab so power users can audit
+     * exactly what the AI received before any processing happened.
+     *
+     * <p>Distinct from {@link #cacheStats()} (which omits raw bodies for size).
+     * Distinct from {@code /api/email/{id}/details} (which is for a single id
+     * and bundles enriched output too). This one is the one-call dump.
+     */
+    @GetMapping("/debug/cache")
+    public Map<String, Object> debugCache() {
+        Map<String, EnrichedEmail> snap = pipeline.snapshot();
+        java.util.Set<String> bodyIds = pipeline.bodyCacheIds();
+        // Union: every id we've scraped a body for OR enriched. Keeps mid-flight
+        // rows visible (body cached, enrichment still running) in the Debug view.
+        java.util.LinkedHashSet<String> allIds = new java.util.LinkedHashSet<>();
+        allIds.addAll(snap.keySet());
+        allIds.addAll(bodyIds);
+
+        java.util.List<Map<String, Object>> entries = new java.util.ArrayList<>(allIds.size());
+        for (String id : allIds) {
+            EnrichedEmail email = snap.get(id);
+            InboxItem item = email == null ? null : email.item();
+            String body = pipeline.getCachedBody(id).orElse(null);
+
+            java.util.LinkedHashMap<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("id", id);
+            java.util.LinkedHashMap<String, Object> rawItem = new java.util.LinkedHashMap<>();
+            rawItem.put("id",      item == null ? id : item.id());
+            rawItem.put("sender",  item == null ? null : item.sender());
+            rawItem.put("subject", item == null ? null : item.subject());
+            rawItem.put("snippet", item == null ? null : item.snippet());
+            rawItem.put("time",    item == null ? null : item.time());
+            row.put("rawItem", rawItem);
+            row.put("rawBody", body == null ? "" : body);
+            row.put("rawBodyChars", body == null ? 0 : body.length());
+            row.put("bodyCached", body != null && !body.isBlank());
+            // Lifecycle stage — lets the UI badge the row accurately:
+            //   "scraped"  → body in cache, enrichment not yet finished
+            //   "enriched" → both body and EnrichedEmail present, success
+            //   "failed"   → enrichment finished but errored out
+            String stage = email == null ? "scraped"
+                         : (email.failed() ? "failed" : "enriched");
+            row.put("stage", stage);
+            row.put("processedMs", email == null ? 0L : email.processedMs());
+            row.put("failed", email != null && email.failed());
+            row.put("badges", email == null ? java.util.List.of() : email.badges());
+            row.put("ctaCount", email == null || email.ctas() == null ? 0 : email.ctas().size());
+            entries.add(row);
+        }
+        return Map.of("ok", true, "totalEmails", entries.size(), "entries", entries);
     }
 
     /**

@@ -41,3 +41,24 @@ intellimailbox:
     max-emails: ${INTELLIMAILBOX_MAX_EMAILS:25}
     # Generous timeout per email — cold local Ollama can take 60s+ on CPU.
     per-email-timeout-ms: ${INTELLIMAILBOX_TIMEOUT_MS:300000}
+
+# ============================================================================
+# Logging — defaults that keep the console readable during development.
+# Override with `LOGGING_LEVEL_…` env vars when debugging a specific subsystem.
+# ============================================================================
+logging:
+  pattern:
+    # Drops the empty trace-id column (`%mdc{traceId:-}`/`spanId`) that
+    # Spring Boot's default pattern leaves blank when no tracer is configured.
+    # Saves ~50 chars per line.
+    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(%-5p) %clr(%-30.30logger{29}){cyan} : %m%n%wEx"
+  level:
+    # SwarmEventListener emits TOOL_STARTED/TOOL_COMPLETED for every
+    # browser-tool round trip — ~50 lines per email scrape. Useful for
+    # debugging the agent framework itself, way too loud during normal use.
+    ai.intelliswarm.swarmai.config: WARN
+    # Spring Data Redis bootstrapping log fires even though we don't use
+    # Redis at runtime (we depend on the starter only to satisfy swarmai-core's
+    # classloader; the in-memory MemoryAutoConfiguration is what's active).
+    org.springframework.data.redis.repository.configuration: WARN
+    org.springframework.data.repository.config: WARN

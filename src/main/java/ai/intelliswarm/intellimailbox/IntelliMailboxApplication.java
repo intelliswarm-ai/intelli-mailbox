@@ -96,14 +96,21 @@ public class IntelliMailboxApplication {
             browserProps.setCdpUrl(chrome.cdpUrl());
             browser.shutdown(); // discard cached state so next call re-inits in attach mode
 
-            // Pre-warm the inbox in a daemon thread — first navigate against an unsigned-in
-            // tab parks on Google's auth screen for the full 30s timeout, blocking startup.
+            // Pre-warm the inbox in a daemon thread — best effort, short timeout.
+            // We used to do a 30s NETWORKIDLE navigate here, which on a cold
+            // Chrome that hasn't seen google.com yet just parks against the
+            // auth wall for the full 30s. That's the same 30s that showed up
+            // in the user's startup logs as "BrowserTool navigate failed:
+            // Timeout 30000ms exceeded" — pure waste. Pass an explicit short
+            // timeout so we fail fast and don't bog down the first /api/inbox.
             Thread prewarm = new Thread(() -> {
                 try {
-                    browser.execute(java.util.Map.of("operation", "navigate",
-                            "url", "https://mail.google.com/mail/u/0/#inbox"));
+                    browser.execute(java.util.Map.of(
+                            "operation", "navigate",
+                            "url",        "https://mail.google.com/mail/u/0/#inbox",
+                            "timeout_ms", 5_000));
                 } catch (Exception e) {
-                    logger.debug("IntelliMailbox pre-warm navigate didn't complete: {}", e.getMessage());
+                    logger.debug("IntelliMailbox pre-warm navigate didn't complete (best-effort, ok): {}", e.getMessage());
                 }
             }, "intellimailbox-prewarm");
             prewarm.setDaemon(true);

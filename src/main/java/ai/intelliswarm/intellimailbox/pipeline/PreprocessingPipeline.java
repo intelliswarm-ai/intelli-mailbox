@@ -145,6 +145,16 @@ public class PreprocessingPipeline {
         return Map.copyOf(cache);
     }
 
+    /**
+     * Snapshot of every id we've scraped a body for — superset of {@link #snapshot()}'s
+     * keys, since the reader runs ahead of the enricher (an id may have a cached body
+     * even before its EnrichedEmail lands). Used by the Debug view so raw scraped
+     * bodies surface immediately, not only after enrichment finishes.
+     */
+    public java.util.Set<String> bodyCacheIds() {
+        return java.util.Set.copyOf(bodyCache.keySet());
+    }
+
     public void subscribe(Consumer<PipelineEvent> sink) { subscribers.add(sink); }
     public void unsubscribe(Consumer<PipelineEvent> sink) { subscribers.remove(sink); }
 

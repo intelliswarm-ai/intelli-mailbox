@@ -64,7 +64,13 @@ public class EmailReader {
         // rows[id] directly — no listing-vs-DOM offset drift, which previously
         // caused row N to scrape the body of row N+k whenever any earlier row
         // had no sender/subject and got filtered out.
+        // Snippet cleanup: Gmail prepends a separator dash to its preview
+        // ("- Hello, ..."). Strip leading dashes / em-dashes / en-dashes so
+        // the snippet reads naturally and the LLM doesn't see leading garbage.
+        // Time fallbacks: Gmail's row time uses 4 different DOM patterns
+        // depending on locale + column-width — try them all.
         String js = "(() => {\n" +
+                "  const cleanSnippet = s => (s || '').replace(/^\\s*[-–—·•]+\\s*/, '').trim();\n" +
                 "  const rows = document.querySelectorAll('[role=\"main\"] [role=\"row\"]');\n" +
                 "  const out = [];\n" +
                 "  rows.forEach((r, idx) => {\n" +
@@ -74,11 +80,20 @@ public class EmailReader {
                 "                 ?? r.querySelector('span.bA4')?.innerText\n" +
                 "                 ?? '';\n" +
                 "    const subject = r.querySelector('span.bog')?.innerText ?? '';\n" +
-                "    const snippet = r.querySelector('span.y2')?.innerText  ?? '';\n" +
+                "    const snippetRaw = r.querySelector('span.y2')?.innerText\n" +
+                "                    ?? r.querySelector('span.bog + span')?.innerText\n" +
+                "                    ?? '';\n" +
+                "    const snippet = cleanSnippet(snippetRaw);\n" +
+                "    // Gmail's relative time: try (1) compact column span (.xW span),\n" +
+                "    // (2) any <span title> with a digit in title (full date in tooltip),\n" +
+                "    // (3) td[title], (4) any element with class xY/xX (older Gmail).\n" +
                 "    const time    = r.querySelector('span.xW span')?.innerText\n" +
+                "                 ?? r.querySelector('span.xW')?.innerText\n" +
+                "                 ?? r.querySelector('span[title]:not([email])')?.getAttribute('title')\n" +
                 "                 ?? r.querySelector('td[title]')?.getAttribute('title')\n" +
+                "                 ?? r.querySelector('span.xY span')?.innerText\n" +
                 "                 ?? '';\n" +
-                "    if (sender || subject) out.push({domIndex: idx, sender, subject, snippet, time});\n" +
+                "    if (sender || subject) out.push({domIndex: idx, sender, subject, snippet, time: (time || '').trim()});\n" +
                 "  });\n" +
                 "  return JSON.stringify(out.slice(0, " + maxEmails + "));\n" +
                 "})()";
@@ -144,13 +159,41 @@ public class EmailReader {
             return "";
         }
 
-        // Scrape the FRESH div.adn (last one without the stale marker — handles
-        // multi-message threads by taking the most recently rendered).
+        // Scrape the FRESH email body. We deliberately target Gmail's
+        // {@code div.a3s} — the actual rendered message body, NOT the outer
+        // div.adn wrapper which also contains the email's toolbar ("Reply",
+        // "More", "Add reaction"), the "to me" recipient line, and the
+        // message-header timestamp chrome. Scraping div.adn directly was
+        // leaking all of that into the LLM prompt and into the Debug view.
+        //
+        // Fallback chain: div.a3s.aiL → div.a3s → div.ii.gt → div.ii.
+        // If none match (rare — promo/marketing emails sometimes), we clone
+        // the wrapper, prune known chrome subtrees, then extract innerText.
         String scrapeJs = "(() => {"
                 + "  const fresh = Array.from(document.querySelectorAll('div.adn'))"
                 + "      .filter(e => !e.hasAttribute('data-imb-stale'));"
                 + "  if (fresh.length === 0) return '';"
-                + "  return fresh[fresh.length - 1].innerText || '';"
+                + "  const wrapper = fresh[fresh.length - 1];"
+                + "  const body = wrapper.querySelector('div.a3s.aiL')"
+                + "             || wrapper.querySelector('div.a3s')"
+                + "             || wrapper.querySelector('div.ii.gt')"
+                + "             || wrapper.querySelector('div.ii');"
+                + "  if (body) return body.innerText || '';"
+                + "  /* Pruned-wrapper fallback. Clone, drop the toolbar / */"
+                + "  /* header / clipped-affordance subtrees, then extract. */"
+                + "  const clone = wrapper.cloneNode(true);"
+                + "  const pruneSels = ["
+                + "    'div.gE.iv',           /* message-header strip */"
+                + "    'div.ade',             /* attachment / quick-action bar */"
+                + "    'div.acX',             /* From-line + Unsubscribe row */"
+                + "    'div.ad8',             /* recipient / to-me row */"
+                + "    'div.adL',             /* clipped-message affordance */"
+                + "    '[role=\"toolbar\"]',  /* explicit toolbar */"
+                + "    'span[aria-label*=\"Reply\"]',"
+                + "    'div[aria-label*=\"Reply\"]'"
+                + "  ];"
+                + "  pruneSels.forEach(s => clone.querySelectorAll(s).forEach(el => el.remove()));"
+                + "  return clone.innerText || '';"
                 + "})()";
         Object body = browser.execute(Map.of("operation", "evaluate_js", "code", scrapeJs));
         String text = String.valueOf(body);
@@ -162,6 +205,10 @@ public class EmailReader {
                     "selector", "[role=\"main\"]"));
             text = String.valueOf(fallback);
         }
+        // Belt-and-braces post-clean. Even when we hit div.a3s, Gmail
+        // sometimes injects translation prompts, "+1 more", or stray
+        // toolbar text via overlays. Drop the well-known chrome lines.
+        text = stripGmailChrome(text);
 
         // Hash-only "navigate back" to the listing. Setting location.hash makes
         // Gmail's SPA re-render the inbox without firing a full page reload, so
@@ -434,5 +481,98 @@ public class EmailReader {
     private static String excerpt(String s, int n) {
         if (s == null) return "";
         return s.length() <= n ? s : s.substring(0, n - 1) + "…";
+    }
+
+    /**
+     * Drop residual Gmail UI chrome that occasionally bleeds into the message
+     * body even when we scrape {@code div.a3s} directly. Run line-by-line so
+     * we don't accidentally chop a real message line that happens to contain
+     * one of these substrings — only an exact-trimmed-line match is dropped.
+     *
+     * <p>The list is intentionally conservative: anything ambiguous (e.g.
+     * "Add to calendar" — could be a real CTA, not just chrome) stays. The
+     * goal is "remove obvious noise", not "remove everything that smells UI".
+     */
+    static String stripGmailChrome(String body) {
+        if (body == null || body.isBlank()) return body;
+
+        // First pass: strip Gmail's preheader-padding characters. These are
+        // U+034F COMBINING GRAPHEME JOINER + zero-width spaces marketing
+        // emails inject so the preview text looks padded — pure noise to a
+        // language model and visually ugly in the Debug view.
+        String cleaned = body
+                .replace("͏", "")  // combining grapheme joiner
+                .replace("​", "")  // zero-width space
+                .replace("‌", "")  // zero-width non-joiner
+                .replace("‍", "")  // zero-width joiner
+                .replace("﻿", ""); // zero-width no-break space (BOM)
+
+        // Lines that are 100% Gmail-viewer UI. Whole-trimmed-line match only —
+        // we never drop a real message line that happens to mention "Reply".
+        java.util.Set<String> drops = java.util.Set.of(
+                "Add reaction",
+                "Reply",
+                "Reply all",
+                "Forward",
+                "More",
+                "to me",
+                "to me,",
+                "to me, others",
+                "Show original",
+                "Show trimmed content",
+                "Translate message",
+                "Translate to English",
+                "Turn off for: French",
+                "Turn off for: German",
+                "Turn off for: Spanish",
+                "Turn off for: Italian",
+                "Turn off for: Portuguese",
+                "Turn off for: Greek",
+                "Turn off for: Dutch",
+                "Turn off for: Polish",
+                "View this email in your browser",
+                "Unsubscribe",
+                "Mark as not important",
+                // Snippet-level chrome that LinkedIn / Substack / etc. trip:
+                "You can't react with an emoji to a group",
+                "[Message clipped]",
+                "View entire message",
+                // The Gmail-clipped affordance sometimes emits both halves:
+                "[Message clipped]  View entire message");
+
+        String[] lines = cleaned.split("\\r?\\n");
+        StringBuilder out = new StringBuilder(cleaned.length());
+        boolean prevBlank = false;
+        for (String raw : lines) {
+            String trimmed = raw.trim();
+            if (drops.contains(trimmed)) continue;
+
+            // Pattern: Gmail's relative-time stamp line — "2:38 PM (29 minutes ago)".
+            if (trimmed.matches("(?i)^\\d{1,2}:\\d{2}\\s*(AM|PM)?\\s*\\([^)]+\\s+ago\\)$")) continue;
+
+            // Pattern: the email's "From" header line that Gmail injects ABOVE
+            // the message body — typically combines sender + email + Unsubscribe:
+            // "LinkedIn Job Alerts <jobalerts-noreply@linkedin.com> Unsubscribe".
+            // Heuristic: contains an email-in-angle-brackets AND ends with
+            // "Unsubscribe" — never appears in real email body text.
+            if (trimmed.endsWith("Unsubscribe")
+                    && trimmed.matches(".*<[^@\\s]+@[^>\\s]+>.*Unsubscribe$")) continue;
+
+            // Pattern: clipped-message footer that Gmail attaches when the email
+            // exceeds 102 KB — "...    [Message clipped]  View entire message".
+            if (trimmed.matches("^\\.\\.\\.\\s*\\[Message clipped\\].*View entire message.*$")) continue;
+            // And the bare "..." marker that Gmail sometimes emits on its own line.
+            if (trimmed.equals("...") || trimmed.equals("…")) continue;
+
+            // Collapse runs of blank lines to a single blank (after a non-blank).
+            if (trimmed.isEmpty()) {
+                if (prevBlank) continue;
+                prevBlank = true;
+            } else {
+                prevBlank = false;
+            }
+            out.append(raw).append('\n');
+        }
+        return out.toString().trim();
     }
 }

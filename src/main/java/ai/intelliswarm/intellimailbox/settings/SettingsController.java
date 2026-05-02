@@ -95,6 +95,7 @@ public class SettingsController {
         out.put("providers", catalog);
         out.put("language", s.language());
         out.put("languageCatalog", LANGUAGE_CATALOG);
+        out.put("debugMode", s.debugMode());
         out.put("settingsPath", SettingsStore.path().toString());
         out.put("activeProfile", System.getProperty("spring.profiles.active", "ollama"));
         out.put("system", SystemInfo.snapshot());
@@ -166,7 +167,13 @@ public class SettingsController {
                     ? current.language()
                     : submittedLang.trim().toLowerCase();
 
-            LlmSettings saved = new LlmSettings(activeProvider, next, language);
+            // Debug mode — accept boolean or string, default to current state.
+            boolean debugMode = current.debugMode();
+            Object rawDebug = body.get("debugMode");
+            if (rawDebug instanceof Boolean b) debugMode = b;
+            else if (rawDebug instanceof String s2) debugMode = "true".equalsIgnoreCase(s2.trim()) || "1".equals(s2.trim());
+
+            LlmSettings saved = new LlmSettings(activeProvider, next, language, debugMode);
             SettingsStore.save(saved);
             // Language is the one setting that takes effect immediately —
             // EnrichmentService reads it via System.getProperty on every prompt

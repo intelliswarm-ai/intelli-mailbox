@@ -20,7 +20,14 @@ public record LlmSettings(
          * Otherwise an ISO 639-1 code: "en", "el", "es", "fr", "de", "it",
          * "pt", "nl", "ja", "zh", "ru", "ar", "hi", "tr", "pl", "sv".
          */
-        String language
+        String language,
+        /**
+         * When {@code true}, the UI surfaces a "Debug" view tab that shows the
+         * raw scraped data per email (InboxItem metadata + verbatim body the
+         * AI received). UI-only — has no effect on enrichment. Off by default
+         * because power-user surface.
+         */
+        boolean debugMode
 ) {
     /** Backwards-compatible canonical constructor: default language to "auto" when null/blank. */
     public LlmSettings {
@@ -31,7 +38,8 @@ public record LlmSettings(
         return new LlmSettings(
                 ProviderCatalog.defaultProviderId(),
                 ProviderCatalog.emptyConfigs(),
-                "auto"
+                "auto",
+                false
         );
     }
 
