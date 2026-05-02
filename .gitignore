@@ -26,3 +26,8 @@ output/
 *.tmp
 .env
 .env.local
+
+# Internal-only design notes / change logs that should not ship in the
+# public repo. Anything under docs/internal/ stays on the maintainer's
+# machine.
+docs/internal/

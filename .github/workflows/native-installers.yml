@@ -1,7 +1,9 @@
 name: Native installers
 
 # Builds .msi (Windows), .dmg (macOS), and .deb (Linux) on every push to main
-# that touches code/pom/installer assets, and attaches the artifacts to the
+# that touches code/pom/installer assets, smoke-tests the freshly-built MSI
+# and DEB on their respective runners, optionally signs the MSI via SignPath.io
+# Foundation (free Authenticode for OSS), and attaches the artifacts to the
 # GitHub Release tagged v<pom-version>. Runs alongside release.yml — that one
 # handles the fat-jar + npm; this one handles the native installers.
 #
@@ -9,10 +11,29 @@ name: Native installers
 # into the installer, so end users don't need Java pre-installed.
 #
 # Permissions:
-#   contents: write — required to upload assets to the release.
-# No code-signing certs configured yet; on Windows users see a SmartScreen
-# warning, on macOS Gatekeeper requires "open anyway" the first time.
-# Wire signing later via secrets WIN_SIGN_CERT, APPLE_ID, etc.
+#   contents: write — required to upload assets to the GitHub Release.
+#
+# ---- Code signing -----------------------------------------------------------
+# Windows MSI signing is wired through SignPath.io Foundation (free for OSS).
+# Until secrets are configured the signing block no-ops and the unsigned MSI
+# uploads as before. To enable signing once your SignPath project is approved:
+#
+#   1. Create a SignPath organization + project + signing policy at
+#        https://app.signpath.io
+#   2. Create a SignPath CI user, copy its API token.
+#   3. Add three repository secrets:
+#        SIGNPATH_API_TOKEN          — the CI user's token
+#        SIGNPATH_ORGANIZATION_ID    — UUID of your SignPath organization
+#      and one repository variable:
+#        SIGNPATH_PROJECT_SLUG       — your project's slug (defaults to "intelli-mailbox")
+#        SIGNPATH_POLICY_SLUG        — your policy's slug (defaults to "release-signing")
+#   4. Make sure your SignPath project's "Trusted Build System" is configured
+#      for GitHub Actions (instructions in the SignPath UI).
+#
+# macOS DMG and Linux DEB signing are still TODO:
+#   - DMG: needs Apple Developer ID ($99/yr) + notarization (notarytool).
+#   - DEB: GPG signing with `dpkg-sig` (free, but apt-style trust requires
+#          publishing the public key).
 
 on:
   push:
@@ -96,6 +117,234 @@ jobs:
       - name: List built installer
         shell: bash
         run: ls -la target/installers/
+
+      # =====================================================================
+      # MSI smoke test (Windows only)
+      #   - Silent-installs the freshly-built MSI on the runner
+      #   - Launches the bundled .exe (the JRE is jlinked in, no Java needed)
+      #   - Polls /api/health until ok=true (90s budget for cold JVM start)
+      #   - Probes /api/settings to confirm the new provider catalog is wired
+      #   - Dumps the app log on failure so we can debug from the run log
+      # If anything fails the job stops here — the upload step never runs,
+      # so a broken MSI cannot land on a GitHub Release.
+      # CI runs in a session that has no real Chrome attached. The app's
+      # CommandLineRunner detects that, logs it, and returns early — but the
+      # web server is already up at that point, so /api/health responds.
+      # =====================================================================
+      - name: Smoke-test the MSI before uploading
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $msi = Get-ChildItem target\installers\*.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI artifact under target\installers\" }
+          Write-Host "==> Installing $($msi.FullName) silently"
+          $log = Join-Path $env:RUNNER_TEMP 'msi-install.log'
+          $p = Start-Process msiexec.exe `
+              -ArgumentList @('/i', "`"$($msi.FullName)`"", '/quiet', '/norestart',
+                              '/l*v', "`"$log`"") `
+              -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+              Write-Host "msiexec exit code: $($p.ExitCode). Log tail:"
+              if (Test-Path $log) { Get-Content $log -Tail 100 }
+              throw "MSI install failed"
+          }
+          Write-Host "==> MSI installed."
+
+          # jpackage's per-user install drops the launcher under either
+          # %LOCALAPPDATA%\Intelli-mailbox or under Program Files when
+          # winPerUserInstall flips. Scan both — first match wins.
+          $candidates = @(
+              (Join-Path $env:LOCALAPPDATA 'Intelli-mailbox\Intelli-mailbox.exe'),
+              (Join-Path $env:LOCALAPPDATA 'Programs\Intelli-mailbox\Intelli-mailbox.exe'),
+              (Join-Path $env:ProgramFiles 'Intelli-mailbox\Intelli-mailbox.exe'),
+              (Join-Path ${env:ProgramFiles(x86)} 'Intelli-mailbox\Intelli-mailbox.exe')
+          )
+          $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $exe) {
+              Write-Host "==> Could not find launcher in known paths; scanning"
+              $exe = (Get-ChildItem -Recurse -ErrorAction SilentlyContinue `
+                        -Path $env:LOCALAPPDATA,$env:ProgramFiles,${env:ProgramFiles(x86)} `
+                        -Filter 'Intelli-mailbox.exe' | Select-Object -First 1).FullName
+          }
+          if (-not $exe) { throw "Intelli-mailbox.exe not found after install" }
+          Write-Host "==> Launcher: $exe"
+
+          # Run on a non-default port to avoid clashing with anything on the runner.
+          # Capture stdout+stderr for post-mortem on failure.
+          $appLog = Join-Path $env:RUNNER_TEMP 'app.log'
+          $proc = Start-Process -FilePath $exe `
+              -ArgumentList @('--server.port=8091', '--spring.main.web-application-type=servlet') `
+              -RedirectStandardOutput $appLog -RedirectStandardError "$appLog.err" -PassThru
+          Write-Host "==> Launched PID=$($proc.Id) — polling /api/health"
+
+          $smokeFailed = $false
+          try {
+              $ok = $false
+              for ($i = 1; $i -le 90; $i++) {
+                  Start-Sleep -Seconds 1
+                  try {
+                      $h = Invoke-RestMethod -Uri 'http://localhost:8091/api/health' -TimeoutSec 2
+                      if ($h.ok -eq $true) { $ok = $true; Write-Host "==> /api/health OK after ${i}s"; break }
+                  } catch { }
+              }
+              if (-not $ok) { $smokeFailed = $true; throw "Health endpoint never responded ok=true within 90s" }
+
+              # Verify the new Settings catalog is wired and the provider list is non-empty.
+              $s = Invoke-RestMethod -Uri 'http://localhost:8091/api/settings' -TimeoutSec 5
+              if (-not $s.providers -or $s.providers.Count -lt 1) {
+                  $smokeFailed = $true
+                  throw "/api/settings returned no providers — catalog not wired"
+              }
+              Write-Host "==> /api/settings OK · $($s.providers.Count) providers · active=$($s.activeProvider)"
+              Write-Host "==> Smoke test passed — MSI is healthy."
+          } finally {
+              if ($smokeFailed) {
+                  Write-Host "----- app stdout (tail) -----"
+                  if (Test-Path $appLog)       { Get-Content $appLog -Tail 200 }
+                  Write-Host "----- app stderr (tail) -----"
+                  if (Test-Path "$appLog.err") { Get-Content "$appLog.err" -Tail 80 }
+              }
+              try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
+              # Belt-and-braces — kill any stray child JVM that the launcher spawned.
+              Get-Process -Name 'Intelli-mailbox*' -ErrorAction SilentlyContinue |
+                  Stop-Process -Force -ErrorAction SilentlyContinue
+              Get-Process -Name 'java*' -ErrorAction SilentlyContinue |
+                  Where-Object { $_.Path -and $_.Path.StartsWith($exe.Substring(0, $exe.LastIndexOf('\\'))) } |
+                  Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+
+      # =====================================================================
+      # DEB smoke test (Linux only) — same idea: install, launch, hit /api/health.
+      # =====================================================================
+      - name: Smoke-test the DEB before uploading
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb=$(ls target/installers/*.deb | head -1)
+          [ -z "$deb" ] && { echo "No DEB artifact"; exit 1; }
+          echo "==> Installing $deb"
+          sudo dpkg -i "$deb" || sudo apt-get install -fy
+
+          # jpackage Linux DEB drops binaries at /opt/intelli-mailbox/bin/Intelli-mailbox
+          exe=$(find /opt -type f -executable \( -name 'Intelli-mailbox' -o -name 'intelli-mailbox' \) 2>/dev/null | head -1)
+          [ -z "$exe" ] && { echo "Could not locate launcher"; exit 1; }
+          echo "==> Launcher: $exe"
+
+          appLog=$(mktemp)
+          "$exe" --server.port=8091 --spring.main.web-application-type=servlet >"$appLog" 2>&1 &
+          pid=$!
+          cleanup() { kill -9 $pid 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          for i in $(seq 1 90); do
+              sleep 1
+              if curl -fsS http://localhost:8091/api/health 2>/dev/null | grep -q '"ok":true'; then
+                  echo "==> /api/health OK after ${i}s"; ok=1; break
+              fi
+          done
+          if [ -z "${ok:-}" ]; then
+              echo "----- app log (tail) -----"; tail -200 "$appLog"; exit 1
+          fi
+          curl -fsS http://localhost:8091/api/settings | grep -q '"providers"' || {
+              echo "/api/settings missing providers"; tail -200 "$appLog"; exit 1; }
+          echo "==> Smoke test passed — DEB is healthy."
+
+      # =====================================================================
+      # SignPath.io Foundation — Authenticode signing for the Windows MSI.
+      # No-op fallback: if SIGNPATH_API_TOKEN isn't configured, we skip the
+      # signing block entirely and ship the unsigned MSI (the SmartScreen
+      # warning still applies until signing is wired up).
+      # =====================================================================
+      - name: Detect SignPath configuration
+        id: signpath-cfg
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          # Materialise the secret in env so we can test it without leaking
+          # the value into a workflow `if:` expression. Empty == not configured.
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if [ -n "${SIGNPATH_API_TOKEN:-}" ]; then
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+              echo "==> SignPath secrets present — MSI will be signed."
+          else
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              echo "==> SignPath secrets NOT set — uploading unsigned MSI."
+              echo "    See workflow header for setup instructions."
+          fi
+
+      - name: Upload unsigned MSI as workflow artifact (for SignPath to pull)
+        id: upload-unsigned
+        if: matrix.os == 'windows-latest' && steps.signpath-cfg.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-msi
+          path: target/installers/*.msi
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Submit MSI to SignPath for signing
+        id: signpath-sign
+        if: matrix.os == 'windows-latest' && steps.signpath-cfg.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v1.1
+        with:
+          api-token:           ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id:     ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug:        ${{ vars.SIGNPATH_PROJECT_SLUG || 'intelli-mailbox' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG  || 'release-signing' }}
+          # The SignPath service downloads the artifact we just uploaded by
+          # ID, signs it, and we wait for the signed file to be ready.
+          github-artifact-id:  ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion:        true
+          # Foundation's free tier may queue behind manual maintainer approval —
+          # give it a generous window before failing the job.
+          service-unavailable-timeout-in-seconds: 600
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: 'target/signed'
+
+      - name: Replace unsigned MSI with the signed one
+        if: matrix.os == 'windows-latest' && steps.signpath-cfg.outputs.enabled == 'true'
+        shell: powershell
+        run: |
+          $signed = Get-ChildItem target\signed\*.msi | Select-Object -First 1
+          if (-not $signed) { throw "SignPath returned no .msi in target/signed" }
+          Write-Host "==> Replacing target/installers MSI with signed copy: $($signed.FullName)"
+          # Wipe the unsigned MSI(s) and copy the signed one into the same dir
+          # the upload step globs from — so no other step changes are needed.
+          Remove-Item target\installers\*.msi -Force
+          Copy-Item $signed.FullName target\installers\
+          # Confirm the signature is real before we ship it.
+          $sig = Get-AuthenticodeSignature (Get-ChildItem target\installers\*.msi)[0].FullName
+          Write-Host "==> Signature status: $($sig.Status)"
+          Write-Host "==> Signer: $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne 'Valid') {
+              throw "Signed MSI did not verify cleanly: $($sig.Status) / $($sig.StatusMessage)"
+          }
+          # Recompute / overwrite the SHA-256 next to the MSI so any download
+          # checksums published next to the file match the signed bytes.
+          $msi = (Get-ChildItem target\installers\*.msi)[0].FullName
+          $hash = Get-FileHash $msi -Algorithm SHA256
+          "$($hash.Hash)  $([System.IO.Path]::GetFileName($msi))" |
+              Out-File -FilePath "$msi.sha256" -Encoding ascii -NoNewline
+          Write-Host "==> SHA-256 (signed): $($hash.Hash)"
+
+      # Surface signing status in the job summary so the release page reviewer
+      # can see at a glance whether this build is signed or not.
+      - name: Annotate signing status
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          if [ "${{ steps.signpath-cfg.outputs.enabled }}" = "true" ]; then
+              echo "✅ **MSI signed via SignPath.io Foundation**" >> "$GITHUB_STEP_SUMMARY"
+          else
+              echo "⚠️ **MSI uploaded UNSIGNED** — SignPath secrets not configured." >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "Users will see SmartScreen 'Don't run' until signing is wired up." >> "$GITHUB_STEP_SUMMARY"
+              echo "See the workflow file header for setup instructions." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload installer to GitHub Release
         uses: softprops/action-gh-release@v2

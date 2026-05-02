@@ -93,11 +93,38 @@ public class SettingsController {
         out.put("activeProvider", s.activeProvider());
         out.put("active", active);
         out.put("providers", catalog);
+        out.put("language", s.language());
+        out.put("languageCatalog", LANGUAGE_CATALOG);
         out.put("settingsPath", SettingsStore.path().toString());
         out.put("activeProfile", System.getProperty("spring.profiles.active", "ollama"));
         out.put("system", SystemInfo.snapshot());
         return out;
     }
+
+    /** Small, hand-curated list of output languages. The user can also pass any
+     *  ISO 639-1 code we don't list; we don't reject unknown codes server-side. */
+    private static final List<Map<String, String>> LANGUAGE_CATALOG = List.of(
+            Map.of("code", "auto", "label", "Auto · match the email's language"),
+            Map.of("code", "en",   "label", "English"),
+            Map.of("code", "el",   "label", "Ελληνικά (Greek)"),
+            Map.of("code", "es",   "label", "Español (Spanish)"),
+            Map.of("code", "fr",   "label", "Français (French)"),
+            Map.of("code", "de",   "label", "Deutsch (German)"),
+            Map.of("code", "it",   "label", "Italiano (Italian)"),
+            Map.of("code", "pt",   "label", "Português (Portuguese)"),
+            Map.of("code", "nl",   "label", "Nederlands (Dutch)"),
+            Map.of("code", "pl",   "label", "Polski (Polish)"),
+            Map.of("code", "sv",   "label", "Svenska (Swedish)"),
+            Map.of("code", "tr",   "label", "Türkçe (Turkish)"),
+            Map.of("code", "ru",   "label", "Русский (Russian)"),
+            Map.of("code", "uk",   "label", "Українська (Ukrainian)"),
+            Map.of("code", "ar",   "label", "العربية (Arabic)"),
+            Map.of("code", "he",   "label", "עברית (Hebrew)"),
+            Map.of("code", "hi",   "label", "हिन्दी (Hindi)"),
+            Map.of("code", "ja",   "label", "日本語 (Japanese)"),
+            Map.of("code", "ko",   "label", "한국어 (Korean)"),
+            Map.of("code", "zh",   "label", "中文 (Chinese)")
+    );
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> save(@RequestBody Map<String, Object> body) {
@@ -133,8 +160,23 @@ public class SettingsController {
                 }
             }
 
-            LlmSettings saved = new LlmSettings(activeProvider, next);
+            // Language is optional in the request body — keep what's saved if absent / blank.
+            String submittedLang = strOr(body, "language", current.language());
+            String language = (submittedLang == null || submittedLang.isBlank())
+                    ? current.language()
+                    : submittedLang.trim().toLowerCase();
+
+            LlmSettings saved = new LlmSettings(activeProvider, next, language);
             SettingsStore.save(saved);
+            // Language is the one setting that takes effect immediately —
+            // EnrichmentService reads it via System.getProperty on every prompt
+            // build, so updating the system property here means the next email
+            // enriched (or re-processed) uses the new language without a restart.
+            // Provider / model / base URL still require a restart because Spring
+            // AI's ChatClient is wired at boot.
+            if (language != null && !language.isBlank()) {
+                System.setProperty("intellimailbox.language", language);
+            }
             logger.info("Settings saved: activeProvider={}, providers configured={}",
                     activeProvider, next.entrySet().stream()
                             .filter(en -> en.getValue() != null

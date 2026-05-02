@@ -58,7 +58,7 @@ public final class SettingsStore {
             String active = (parsed.activeProvider() == null || parsed.activeProvider().isBlank())
                     ? ProviderCatalog.defaultProviderId()
                     : parsed.activeProvider();
-            return new LlmSettings(active, merged);
+            return new LlmSettings(active, merged, parsed.language());
         } catch (IOException e) {
             logger.warn("Failed to read {} — falling back to defaults: {}", SETTINGS_PATH, e.toString());
             return LlmSettings.defaults();
@@ -99,6 +99,13 @@ public final class SettingsStore {
         String baseUrl = firstNonBlank(cfg.baseUrl(), provider.defaultBaseUrl());
         String model   = firstNonBlank(cfg.model(),   provider.defaultModel());
         String apiKey  = cfg.apiKey() == null ? "" : cfg.apiKey();
+
+        // Language preference is read by EnrichmentService at prompt-build time
+        // (see intellimailbox.language @Value); exposing it as a system prop here
+        // means changes apply on next launch.
+        if (settings.language() != null && !settings.language().isBlank()) {
+            setIfAbsent("intellimailbox.language", settings.language());
+        }
 
         switch (provider.transport()) {
             case OLLAMA -> {

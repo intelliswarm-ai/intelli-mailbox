@@ -13,12 +13,25 @@ import java.util.Map;
  */
 public record LlmSettings(
         String activeProvider,
-        Map<String, ProviderConfig> providers
+        Map<String, ProviderConfig> providers,
+        /**
+         * Output language for AI-generated text (summary, ctas, replies).
+         * "auto" → match the email's own language (legacy behaviour).
+         * Otherwise an ISO 639-1 code: "en", "el", "es", "fr", "de", "it",
+         * "pt", "nl", "ja", "zh", "ru", "ar", "hi", "tr", "pl", "sv".
+         */
+        String language
 ) {
+    /** Backwards-compatible canonical constructor: default language to "auto" when null/blank. */
+    public LlmSettings {
+        if (language == null || language.isBlank()) language = "auto";
+    }
+
     public static LlmSettings defaults() {
         return new LlmSettings(
                 ProviderCatalog.defaultProviderId(),
-                ProviderCatalog.emptyConfigs()
+                ProviderCatalog.emptyConfigs(),
+                "auto"
         );
     }
 

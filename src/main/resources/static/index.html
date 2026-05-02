@@ -576,6 +576,91 @@
       box-shadow: 0 0 0 2px var(--accent);
     }
 
+    /* ---- Suggestions view ------------------------------------- */
+    .suggestions { gap: 18px; }
+    .suggest-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 18px;
+      box-shadow: var(--shadow-card);
+    }
+    .suggest-section.suggest-reply    { border-left: 3px solid var(--accent); }
+    .suggest-section.suggest-due      { border-left: 3px solid var(--color-warning); }
+    .suggest-section.suggest-phishing { border-left: 3px solid var(--color-error); }
+    .suggest-section.suggest-cleanup  { border-left: 3px solid var(--color-info); }
+
+    .suggest-section-header {
+      display: flex; align-items: baseline; gap: 12px;
+      padding-bottom: 8px; margin-bottom: 10px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .suggest-section-title {
+      font-weight: 600; color: var(--text-heading); font-size: 1.02rem;
+    }
+    .suggest-section-sub {
+      color: var(--text-muted); font-size: 0.85rem;
+    }
+    .suggest-rows { display: grid; gap: 10px; }
+    .suggest-row {
+      cursor: pointer;
+      padding: 10px 14px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-input);
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .suggest-row:hover { border-color: var(--accent); background: var(--bg-card-hover); }
+    .suggest-row.is-overdue { border-left: 3px solid var(--color-error); }
+    .suggest-row.is-phishing { border-left: 3px solid var(--color-error); }
+
+    .suggest-row-head {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .suggest-priority {
+      font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: 999px;
+      background: var(--accent-dim); color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .suggest-priority.pri-high   { background: rgba(255,110,110,0.12); color: var(--color-error);   border-color: var(--color-error); }
+    .suggest-priority.pri-medium { background: var(--accent-dim);      color: var(--accent);        border-color: var(--accent); }
+    .suggest-priority.pri-low    { background: rgba(102,187,106,0.12); color: var(--color-success); border-color: var(--color-success); }
+
+    .suggest-due {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
+      padding: 2px 8px; border-radius: 4px;
+      border: 1px solid var(--color-warning); color: var(--color-warning);
+    }
+    .suggest-due.overdue { border-color: var(--color-error); color: var(--color-error); }
+
+    .suggest-sender {
+      font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .suggest-subject {
+      font-size: 0.95rem; color: var(--text-heading); font-weight: 600;
+      flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .suggest-summary {
+      font-size: 0.88rem; color: var(--text-primary); line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .suggest-summary.suggest-quote {
+      color: var(--text-muted); font-style: italic; font-size: 0.82rem;
+    }
+    .suggest-actions {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .suggest-actions button {
+      padding: 4px 10px; font-size: 0.78rem;
+    }
+    .suggest-link {
+      color: var(--accent); font-size: 0.82rem; font-weight: 500;
+    }
+
     /* ---- Help overlay (?) ------------------------------------ */
     .help-overlay {
       position: fixed; inset: 0; z-index: 100;
@@ -679,6 +764,47 @@
     }
     .modal-loading {
       text-align: center; color: var(--text-muted); padding: 60px 20px;
+    }
+    .modal-section-sub {
+      font-size: 0.7rem; font-weight: 400; letter-spacing: 0;
+      color: var(--text-muted); text-transform: none; margin-left: 8px;
+    }
+    .modal-hint {
+      margin-top: 6px; padding: 6px 10px; border-radius: 6px;
+      background: var(--accent-dim); color: var(--text-secondary);
+      font-size: 0.78rem; line-height: 1.4;
+    }
+    /* Highlight a CTA's verbatim source quote inside the rendered body */
+    mark.cta-quote {
+      background: rgba(255, 224, 130, 0.35);
+      color: inherit;
+      padding: 1px 2px;
+      border-radius: 2px;
+      box-shadow: 0 0 0 1px rgba(255, 173, 102, 0.45);
+    }
+    [data-theme="light"] mark.cta-quote {
+      background: rgba(252, 232, 178, 0.7);
+      box-shadow: 0 0 0 1px rgba(249, 171, 0, 0.55);
+    }
+    /* Memory-snapshot table for the email modal */
+    .cache-table {
+      width: 100%; border-collapse: collapse; font-size: 0.84rem;
+    }
+    .cache-table td {
+      padding: 4px 8px; vertical-align: top;
+      border-bottom: 1px dotted var(--border-subtle);
+    }
+    .cache-table td.cache-key {
+      width: 140px; color: var(--text-muted); font-size: 0.78rem;
+    }
+    .cache-table td.cache-mono code {
+      font-family: var(--font-mono); font-size: 0.78rem;
+      background: var(--bg-input); padding: 1px 6px; border-radius: 4px;
+      color: var(--text-heading);
+    }
+    .cache-table code {
+      font-family: var(--font-mono); font-size: 0.78rem;
+      background: var(--bg-input); padding: 1px 6px; border-radius: 4px;
     }
 
     /* ---- Active-LLM pill in the page header ------------------- */
@@ -1014,6 +1140,7 @@
     <div class="view-toggle" role="group" aria-label="View">
       <button type="button" data-view-value="inbox" aria-pressed="true" title="Flat inbox view">≡ Inbox</button>
       <button type="button" data-view-value="digest" aria-pressed="false" title="Daily inbox digest, grouped by badge">▦ Digest</button>
+      <button type="button" data-view-value="suggestions" aria-pressed="false" title="What the AI suggests you act on now">💡 Suggestions</button>
     </div>
     <div class="search-box" id="search-box">
       <span style="color:var(--text-muted)">⌕</span>
@@ -1041,6 +1168,7 @@
     <div id="action-panel-mount"></div>
     <div id="list" class="email-list"></div>
     <div id="digest" class="digest" style="display:none"></div>
+    <div id="suggestions" class="suggestions" style="display:none"></div>
   </main>
   <div id="modal-mount"></div>
   <div id="help-mount"></div>
@@ -1091,8 +1219,12 @@ const state = {
   // Filter persists across hard-refresh via localStorage. Server cache + SSE replay
   // restore items+enrichments on its own — this just keeps the user's chosen view.
   filter: (() => { try { return localStorage.getItem(FILTER_KEY) || null; } catch (e) { return null; } })(),
-  // 'inbox' (flat list, default) or 'digest' (badge-grouped). Persisted like the theme.
-  view: (() => { try { return localStorage.getItem(VIEW_KEY) === 'digest' ? 'digest' : 'inbox'; } catch (e) { return 'inbox'; } })(),
+  // 'inbox' (flat list, default), 'digest' (badge-grouped), or 'suggestions'
+  // (AI-recommended actions). Persisted like the theme.
+  view: (() => { try {
+    const v = localStorage.getItem(VIEW_KEY);
+    return (v === 'digest' || v === 'suggestions') ? v : 'inbox';
+  } catch (e) { return 'inbox'; } })(),
   // Per-section expanded row ids in digest view. Key is "${badge}:${id}" so the
   // same email expanded under MEETING and EXTERNAL is independent. Not persisted —
   // expansion state is a transient UI affordance.
@@ -1122,6 +1254,7 @@ function ensureItemListed(item) {
 const $ = (s) => document.querySelector(s);
 const list = $('#list');
 const digestEl = $('#digest');
+const suggestionsEl = $('#suggestions');
 const actionMount = $('#action-panel-mount');
 const empty = $('#empty');
 const statusText = $('#status-text');
@@ -1311,6 +1444,30 @@ function stripLLMArtifacts(s) {
 function escapeHtml(s) {
   return stripLLMArtifacts(s || '').replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+/**
+ * Wrap each quote (already HTML-escaped because the body input is too) with
+ * <mark> so the user can see which spans of the email each CTA's sourceQuote
+ * actually points to. Inputs MUST already be HTML-escaped — we don't escape
+ * here. Long quotes are searched as their first ~80 chars to forgive whitespace
+ * collapse / minor tokenization differences between the LLM output and the
+ * scrape.
+ */
+function highlightQuotes(escapedHaystack, quotes) {
+  if (!quotes || quotes.length === 0) return escapedHaystack;
+  let out = escapedHaystack;
+  for (const q of quotes) {
+    if (!q) continue;
+    const escaped = escapeHtml(q).replace(/\s+/g, ' ').trim();
+    if (escaped.length < 6) continue;
+    // First ~80 chars is enough to anchor to the right span without false negatives
+    // when the LLM lightly normalised whitespace from the source.
+    const needle = escaped.length > 80 ? escaped.slice(0, 80) : escaped;
+    const safe = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(safe, 'i'), m => `<mark class="cta-quote">${m}</mark>`);
+  }
+  return out;
 }
 
 function renderBadgeBar() {
@@ -1571,12 +1728,22 @@ function renderList() {
   if (state.view === 'digest') {
     list.style.display = 'none';
     digestEl.style.display = 'grid';
+    suggestionsEl.style.display = 'none';
     badgeBar.style.display = 'none'; // digest IS the badge grouping; filter bar is redundant
     renderDigest();
     return;
   }
+  if (state.view === 'suggestions') {
+    list.style.display = 'none';
+    digestEl.style.display = 'none';
+    suggestionsEl.style.display = 'grid';
+    badgeBar.style.display = 'none';
+    renderSuggestions();
+    return;
+  }
   list.style.display = 'grid';
   digestEl.style.display = 'none';
+  suggestionsEl.style.display = 'none';
   badgeBar.style.display = '';
 
   if (state.items.length === 0) {
@@ -1767,6 +1934,220 @@ function renderDigestSection(badge, entries, todayIso) {
       </div>
       <div class="digest-rows">${rows}</div>
     </div>`;
+}
+
+// ============================================================
+// Suggestions view — what the AI thinks the user should act on now.
+// Pure aggregation over the same `state.enriched` data the inbox / digest
+// already use, so SSE updates re-render this view automatically.
+//
+// Four sections, in priority order:
+//   🎯 Reply now            — emails with needsReply=true + drafts ready
+//   ⏰ Due today / overdue   — CTAs whose dueDate ≤ today
+//   ⚠ Possible phishing     — phishingSuspected=true emails
+//   📬 Cleanup candidates   — newsletters + automated, sender-grouped
+// ============================================================
+function renderSuggestions() {
+  const enrichedItems = state.items
+      .map(item => ({ item, enriched: state.enriched[item.id] }))
+      .filter(x => x.enriched && !x.enriched.failed);
+
+  if (enrichedItems.length === 0) {
+    suggestionsEl.innerHTML = `
+      <div class="empty" style="padding:60px 20px;">
+        <h2>No suggestions yet</h2>
+        <p>Suggestions appear once the AI finishes analyzing your inbox. Try
+        ↻ Refresh inbox if you haven't already.</p>
+      </div>`;
+    return;
+  }
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  // ---- 1. Reply now ----------------------------------------------------
+  const replyNow = enrichedItems
+      .filter(x => x.enriched.needsReply && x.enriched.replyDrafts)
+      .sort((a, b) => priorityRank(topCtaPriority(a.enriched)) - priorityRank(topCtaPriority(b.enriched)));
+
+  // ---- 2. Due today / overdue -----------------------------------------
+  const dueSoon = [];
+  for (const { item, enriched } of enrichedItems) {
+    for (const c of (enriched.ctas || [])) {
+      if (!c.dueDate) continue;
+      if (c.dueDate <= todayIso) {
+        dueSoon.push({ item, enriched, cta: c, overdue: c.dueDate < todayIso });
+      }
+    }
+  }
+  dueSoon.sort((a, b) => (a.cta.dueDate || '').localeCompare(b.cta.dueDate || ''));
+
+  // ---- 3. Possible phishing ------------------------------------------
+  const phishing = enrichedItems.filter(x => x.enriched.phishingSuspected);
+
+  // ---- 4. Cleanup candidates: senders with ≥ 2 newsletters ------------
+  const newsletterBySender = {};
+  for (const x of enrichedItems) {
+    if (!(x.enriched.badges || []).includes('NEWSLETTER')) continue;
+    const sender = x.item.sender || '(unknown)';
+    (newsletterBySender[sender] ||= []).push(x);
+  }
+  const cleanup = Object.entries(newsletterBySender)
+      .filter(([, xs]) => xs.length >= 2)
+      .sort(([, a], [, b]) => b.length - a.length);
+
+  const totalCount = replyNow.length + dueSoon.length + phishing.length + cleanup.length;
+
+  if (totalCount === 0) {
+    suggestionsEl.innerHTML = `
+      <div class="empty" style="padding:60px 20px;">
+        <h2>You're all caught up</h2>
+        <p>No replies pending, no overdue actions, nothing flagged as risky,
+        no newsletters to unsubscribe from. Nice inbox.</p>
+      </div>`;
+    return;
+  }
+
+  suggestionsEl.innerHTML = `
+    ${replyNow.length ? renderSuggestionSection('🎯 Reply now', 'reply',
+        replyNow.length + ' email' + (replyNow.length === 1 ? '' : 's') + ' need a response',
+        replyNow.map(renderReplySuggestion).join('')) : ''}
+
+    ${dueSoon.length ? renderSuggestionSection('⏰ Due today or overdue', 'due',
+        dueSoon.length + ' action item' + (dueSoon.length === 1 ? '' : 's'),
+        dueSoon.map(renderDueSuggestion).join('')) : ''}
+
+    ${phishing.length ? renderSuggestionSection('⚠ Possible phishing', 'phishing',
+        phishing.length + ' email' + (phishing.length === 1 ? '' : 's') + ' flagged for review',
+        phishing.map(renderPhishingSuggestion).join('')) : ''}
+
+    ${cleanup.length ? renderSuggestionSection('📬 Unsubscribe candidates', 'cleanup',
+        cleanup.length + ' sender' + (cleanup.length === 1 ? '' : 's') + ' with ≥2 newsletters',
+        cleanup.map(renderCleanupSuggestion).join('')) : ''}
+  `;
+
+  // Wire interactions
+  suggestionsEl.querySelectorAll('[data-suggest-open]').forEach(el => {
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-suggest-action]')) return; // action button handled below
+      openEmailModal(el.dataset.suggestOpen);
+    });
+  });
+  suggestionsEl.querySelectorAll('[data-suggest-action="inject-draft"]').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const id = btn.dataset.id;
+      const tone = btn.dataset.tone;
+      const orig = btn.textContent;
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const res = await fetch('/api/email/' + encodeURIComponent(id) + '/inject-draft', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tone }),
+        });
+        const data = await res.json();
+        btn.textContent = data.ok ? '✓ Injected' : '✗ ' + (data.reason || 'failed');
+      } catch (e) {
+        btn.textContent = '✗ ' + e.message;
+      } finally {
+        setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 2200);
+      }
+    });
+  });
+}
+
+function renderSuggestionSection(title, slug, sub, body) {
+  return `
+    <div class="suggest-section suggest-${slug}">
+      <div class="suggest-section-header">
+        <span class="suggest-section-title">${title}</span>
+        <span class="suggest-section-sub">${escapeHtml(sub)}</span>
+      </div>
+      <div class="suggest-rows">${body}</div>
+    </div>`;
+}
+
+function renderReplySuggestion({ item, enriched }) {
+  const pri = topCtaPriority(enriched);
+  return `
+    <div class="suggest-row" data-suggest-open="${escapeHtml(item.id)}">
+      <div class="suggest-row-head">
+        <span class="suggest-priority pri-${pri.toLowerCase()}">${pri}</span>
+        <span class="suggest-sender">${escapeHtml(item.sender || '(unknown)')}</span>
+        <span class="suggest-subject">${escapeHtml(item.subject || '(no subject)')}</span>
+      </div>
+      <div class="suggest-summary">${escapeHtml(enriched.summary || '')}</div>
+      <div class="suggest-actions">
+        <button class="secondary" data-suggest-action="inject-draft" data-id="${escapeHtml(item.id)}" data-tone="formal">📩 Use formal draft</button>
+        <button class="secondary" data-suggest-action="inject-draft" data-id="${escapeHtml(item.id)}" data-tone="friendly">😊 Friendly</button>
+        <button class="secondary" data-suggest-action="inject-draft" data-id="${escapeHtml(item.id)}" data-tone="brief">⚡ Brief</button>
+        <span style="flex:1"></span>
+        <span class="suggest-link">Open email →</span>
+      </div>
+    </div>`;
+}
+
+function renderDueSuggestion({ item, enriched, cta, overdue }) {
+  const pri = (cta.priority || 'MEDIUM').toUpperCase();
+  return `
+    <div class="suggest-row ${overdue ? 'is-overdue' : ''}" data-suggest-open="${escapeHtml(item.id)}">
+      <div class="suggest-row-head">
+        <span class="suggest-priority pri-${pri.toLowerCase()}">${pri}</span>
+        <span class="suggest-due ${overdue ? 'overdue' : 'today'}">${overdue ? 'OVERDUE' : 'TODAY'} · ${escapeHtml(cta.dueDate)}</span>
+        <span class="suggest-sender">${escapeHtml(item.sender || '(unknown)')}</span>
+      </div>
+      <div class="suggest-summary"><b>${escapeHtml(cta.text || '')}</b></div>
+      <div class="suggest-summary suggest-quote">"${escapeHtml(cta.sourceQuote || '')}"</div>
+      <div class="suggest-actions">
+        <span class="suggest-link">Open email →</span>
+      </div>
+    </div>`;
+}
+
+function renderPhishingSuggestion({ item, enriched }) {
+  return `
+    <div class="suggest-row is-phishing" data-suggest-open="${escapeHtml(item.id)}">
+      <div class="suggest-row-head">
+        <span class="phishing-flag">⚠ PHISHING</span>
+        <span class="suggest-sender">${escapeHtml(item.sender || '(unknown)')}</span>
+        <span class="suggest-subject">${escapeHtml(item.subject || '(no subject)')}</span>
+      </div>
+      <div class="suggest-summary">${escapeHtml(enriched.summary || '')}</div>
+      <div class="suggest-actions">
+        <span class="suggest-link">Open email to review →</span>
+      </div>
+    </div>`;
+}
+
+function renderCleanupSuggestion([sender, xs]) {
+  const subjects = xs.slice(0, 3).map(x => x.item.subject).filter(Boolean);
+  // Use the first email in the cluster as the "open" target.
+  const first = xs[0];
+  return `
+    <div class="suggest-row" data-suggest-open="${escapeHtml(first.item.id)}">
+      <div class="suggest-row-head">
+        <span class="kind-pill kind-remote">${xs.length} newsletters</span>
+        <span class="suggest-sender">${escapeHtml(sender)}</span>
+      </div>
+      <div class="suggest-summary">
+        ${subjects.map(s => '· ' + escapeHtml(s)).join('<br>') || '(no subjects)'}
+        ${xs.length > 3 ? '<br>… and ' + (xs.length - 3) + ' more' : ''}
+      </div>
+      <div class="suggest-actions">
+        <span class="suggest-link">Open most recent → look for the unsubscribe link</span>
+      </div>
+    </div>`;
+}
+
+function priorityRank(p) {
+  return { HIGH: 0, MEDIUM: 1, LOW: 2 }[(p || 'MEDIUM').toUpperCase()] ?? 1;
+}
+
+function topCtaPriority(enriched) {
+  const ctas = enriched.ctas || [];
+  if (ctas.length === 0) return 'MEDIUM';
+  return ctas.slice().sort((a, b) =>
+      priorityRank(a.priority) - priorityRank(b.priority))[0].priority || 'MEDIUM';
 }
 
 // Switch to inbox view, scroll the matching row into view, briefly highlight it.
@@ -1962,11 +2343,33 @@ function renderModal(item, enriched, body) {
       ? `<span class="phishing-flag" style="margin-right:6px">⚠ phishing flagged</span>` : '';
   const confChip = conf === 'low'
       ? `<span class="confidence-low" title="Summary keywords don't overlap with subject/sender">⚠ verify</span>` : '';
+  // Highlight every CTA's verbatim source quote inside the rendered body so the
+  // user can see exactly which words the AI keyed off — accuracy verification.
+  // We escape the body first, then wrap matches in <mark>, so XSS-safe.
+  const ctaQuotes = (e.ctas || []).map(c => c.sourceQuote).filter(q => q && q.trim().length > 6);
   const bodyHtml = body === '__loading__'
       ? `<div class="modal-loading"><div class="spinner" style="margin:0 auto 10px"></div>Loading body…</div>`
       : (body
-          ? `<pre class="modal-fullbody">${escapeHtml(body)}</pre>`
+          ? `<pre class="modal-fullbody">${highlightQuotes(escapeHtml(body), ctaQuotes)}</pre>`
           : `<div class="modal-loading">No body cached for this email yet — try ↻ Re-analyze.</div>`);
+  const bodyChars = (body && body !== '__loading__') ? body.length : 0;
+
+  // "Memory snapshot" — surfaces what's cached in-memory for this email so the
+  // user can audit the AI's analysis against the actual scraped bytes.
+  const cacheRow = (label, val, monoFlag) => `
+    <tr><td class="cache-key">${escapeHtml(label)}</td>
+        <td class="${monoFlag ? 'cache-mono' : ''}">${val}</td></tr>`;
+  const memoryRows = enriched
+      ? `
+      ${cacheRow('Email ID', `<code>${escapeHtml(item.id)}</code>`, true)}
+      ${cacheRow('Cached body', bodyChars > 0 ? `${bodyChars} chars (raw bytes the AI analyzed)` : '<i>not cached</i>')}
+      ${cacheRow('Badges', (e.badges || []).length ? (e.badges || []).map(b => `<code>${escapeHtml(b)}</code>`).join(' ') : '<i>none</i>', true)}
+      ${cacheRow('Action items', `${(e.ctas || []).length} extracted`)}
+      ${cacheRow('Reply drafts', e.replyDrafts ? '3 tones cached' : '<i>none (needsReply=false)</i>')}
+      ${cacheRow('Phishing flag', e.phishingSuspected ? '<b style="color:var(--color-error)">true</b>' : 'false')}
+      ${cacheRow('LLM time', `${e.processedMs} ms`)}
+      ${cacheRow('Failed', e.failed ? '<b style="color:var(--color-error)">true</b>' : 'false')}`
+      : `<tr><td class="cache-key">Status</td><td><i>not yet enriched</i></td></tr>`;
 
   modalMount.innerHTML = `
     <div class="modal-backdrop" data-modal-backdrop>
@@ -2000,8 +2403,13 @@ function renderModal(item, enriched, body) {
               ${renderDrafts(item.id, enriched.replyDrafts)}
             </div>` : ''}
           <div class="modal-section">
-            <h4>Email body</h4>
+            <h4>Original email content <span class="modal-section-sub">(verbatim — what the AI analyzed)</span></h4>
             ${bodyHtml}
+            ${ctaQuotes.length ? '<div class="modal-hint">Highlighted excerpts are the verbatim source quotes the AI cited for each action item — click an item above to verify.</div>' : ''}
+          </div>
+          <div class="modal-section">
+            <h4>Memory snapshot <span class="modal-section-sub">(in-memory cache — gone when app restarts)</span></h4>
+            <table class="cache-table"><tbody>${memoryRows}</tbody></table>
           </div>
         </div>
       </div>
@@ -2113,7 +2521,7 @@ function showHelp() {
         <h3>Keyboard shortcuts</h3>
         <table>
           <tr><td class="kbd-cell"><kbd>r</kbd></td><td>Refresh inbox</td></tr>
-          <tr><td class="kbd-cell"><kbd>i</kbd> / <kbd>d</kbd></td><td>Switch to Inbox / Digest view</td></tr>
+          <tr><td class="kbd-cell"><kbd>i</kbd> / <kbd>d</kbd> / <kbd>s</kbd></td><td>Switch to Inbox / Digest / Suggestions view</td></tr>
           <tr><td class="kbd-cell"><kbd>j</kbd> / <kbd>k</kbd></td><td>Next / previous row</td></tr>
           <tr><td class="kbd-cell"><kbd>Enter</kbd></td><td>Open selected email</td></tr>
           <tr><td class="kbd-cell"><kbd>Esc</kbd></td><td>Close modal / clear selection</td></tr>
@@ -2169,6 +2577,7 @@ async function openSettings() {
   settingsState.data = data;
   settingsState.draft = {
     activeProvider: data.activeProvider,
+    language: data.language || 'auto',
     providers: Object.fromEntries((data.providers || []).map(p => [p.id, {
       baseUrl: p.config?.baseUrl ?? '',
       // Pre-fill the input with the masked sentinel when a key is saved.
@@ -2207,6 +2616,9 @@ function setActiveProvider(id) {
 function renderSettings() {
   const data = settingsState.data;
   const sys  = data.system || {};
+  const langOptions = (data.languageCatalog || [{ code: 'auto', label: 'Auto' }])
+      .map(l => `<option value="${escapeHtml(l.code)}" ${l.code === settingsState.draft.language ? 'selected' : ''}>${escapeHtml(l.label)}</option>`)
+      .join('');
   const card = settingsMount.querySelector('#settings-card');
   card.innerHTML = `
     <button class="modal-close" data-settings-close title="Close (Esc)">×</button>
@@ -2219,6 +2631,17 @@ function renderSettings() {
       <div class="modal-meta">
         <span>Active profile: <b>${escapeHtml(data.activeProfile || '')}</b></span>
         <span>Detected: <b>${escapeHtml(String(sys.ramGb ?? '?'))} GB RAM</b> · ${escapeHtml(String(sys.cpuCores ?? '?'))} cores · ${escapeHtml(sys.arch || '')} · ${escapeHtml(sys.os || '')}</span>
+      </div>
+      <div class="modal-meta" style="margin-top:6px">
+        <label for="settings-language" style="font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin:0">
+          🌐 Output language
+        </label>
+        <select id="settings-language" style="background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:6px; padding:4px 8px; font-size:0.84rem; color:var(--text-primary); font-family:var(--font-sans);">
+          ${langOptions}
+        </select>
+        <span style="font-size:0.78rem; color:var(--text-muted)">
+          Affects summary, action items, and reply drafts. Source quotes stay verbatim.
+        </span>
       </div>
     </div>
 
@@ -2237,6 +2660,9 @@ function renderSettings() {
   `;
   card.querySelectorAll('[data-settings-close]').forEach(b => b.addEventListener('click', closeSettings));
   card.querySelector('#settings-save-btn')?.addEventListener('click', saveSettings);
+  card.querySelector('#settings-language')?.addEventListener('change', (ev) => {
+    settingsState.draft.language = ev.target.value;
+  });
   renderSettingsActiveBanner();
   renderSettingsRail();
   renderSettingsPane(settingsState.selectedTab);
@@ -2674,6 +3100,7 @@ window.addEventListener('keydown', (ev) => {
     case 'r': ev.preventDefault(); refreshInbox(); break;
     case 'i': ev.preventDefault(); state.view = 'inbox'; persistView(); applyView(); renderList(); renderBadgeBar(); break;
     case 'd': ev.preventDefault(); state.view = 'digest'; persistView(); applyView(); renderList(); break;
+    case 's': ev.preventDefault(); state.view = 'suggestions'; persistView(); applyView(); renderList(); break;
     case '/': ev.preventDefault(); searchInput?.focus(); break;
     case 'j': ev.preventDefault(); selectAdjacentRow(+1); break;
     case 'k': ev.preventDefault(); selectAdjacentRow(-1); break;
@@ -2701,11 +3128,12 @@ function selectAdjacentRow(delta) {
 
 btnRefresh.addEventListener('click', refreshInbox);
 
-// View toggle: Inbox <-> Digest. The data is shared, so switching modes is
-// just a re-render. Persisted in localStorage like the theme.
+// View toggle: Inbox / Digest / Suggestions. The data is shared, so switching
+// modes is just a re-render. Persisted in localStorage like the theme.
 document.querySelectorAll('.view-toggle button').forEach(b => {
   b.addEventListener('click', () => {
-    state.view = b.dataset.viewValue === 'digest' ? 'digest' : 'inbox';
+    const v = b.dataset.viewValue;
+    state.view = (v === 'digest' || v === 'suggestions') ? v : 'inbox';
     persistView();
     applyView();
     renderList();

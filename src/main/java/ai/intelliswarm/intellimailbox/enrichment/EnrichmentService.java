@@ -34,6 +34,51 @@ public class EnrichmentService {
     private final Agent enrichmentAgent;
     private final Agent draftAgent;
 
+    /**
+     * Output-language preference. {@code "auto"} = match the email's own
+     * language (default). Read fresh from the system property on every prompt
+     * build so flipping the Settings dropdown takes effect on the next email
+     * — no app restart required.
+     */
+    private static String outputLanguage() {
+        String v = System.getProperty("intellimailbox.language");
+        if (v == null || v.isBlank()) v = System.getenv("INTELLIMAILBOX_LANGUAGE");
+        return (v == null || v.isBlank()) ? "auto" : v.trim().toLowerCase();
+    }
+
+    /** Translate the saved ISO code into a directive the LLM understands. */
+    private static String languageDirective() {
+        String code = outputLanguage();
+        if ("auto".equals(code)) {
+            return "Match the LANGUAGE of the email body (e.g. Greek email → Greek, French → French).";
+        }
+        String name = switch (code) {
+            case "en" -> "English";
+            case "el" -> "Greek (Ελληνικά)";
+            case "es" -> "Spanish";
+            case "fr" -> "French";
+            case "de" -> "German";
+            case "it" -> "Italian";
+            case "pt" -> "Portuguese";
+            case "nl" -> "Dutch";
+            case "pl" -> "Polish";
+            case "sv" -> "Swedish";
+            case "tr" -> "Turkish";
+            case "ru" -> "Russian";
+            case "uk" -> "Ukrainian";
+            case "ar" -> "Arabic";
+            case "he" -> "Hebrew";
+            case "hi" -> "Hindi";
+            case "ja" -> "Japanese";
+            case "ko" -> "Korean";
+            case "zh" -> "Chinese";
+            default   -> code; // unknown ISO code — pass through to the LLM
+        };
+        return "Write all generated text (summary, cta.text, reply drafts) in " + name
+                + ", regardless of the email's original language. "
+                + "EXCEPTION: cta.sourceQuote MUST be a verbatim excerpt from the email — do not translate it.";
+    }
+
     public EnrichmentService(ChatClient.Builder chatClientBuilder,
                              @Value("${intellimailbox.preprocessing.per-email-timeout-ms:300000}")
                              long perEmailTimeoutMs) {
@@ -286,6 +331,8 @@ public class EnrichmentService {
                 No JSON, no markdown, no preamble — just the summary text.
                 Don't invent senders, dates, links or amounts that aren't in the body.
 
+                LANGUAGE: %s
+
                 EMAIL METADATA:
                   From:    %s
                   Subject: %s
@@ -294,6 +341,7 @@ public class EnrichmentService {
                 EMAIL BODY:
                 %s
                 """.formatted(
+                        languageDirective(),
                         nullToDash(item.sender()),
                         nullToDash(item.subject()),
                         nullToDash(item.time()),
@@ -307,6 +355,8 @@ public class EnrichmentService {
                 The summary is ALREADY KNOWN (provided below for context only — do not regenerate it).
                 Return a JSON object with badges, ctas, phishingSuspected, and needsReply.
                 Leave the summary field empty.
+
+                LANGUAGE: %s
 
                 Output rules:
                 - badges: subset of [MEETING, RISK, EXTERNAL, AUTOMATED, VIP, FOLLOW_UP, NEWSLETTER, FINANCE].
@@ -341,6 +391,7 @@ public class EnrichmentService {
                 EMAIL BODY:
                 %s
                 """.formatted(
+                        languageDirective(),
                         nullToDash(item.sender()),
                         nullToDash(item.subject()),
                         nullToDash(item.time()),
@@ -421,6 +472,8 @@ public class EnrichmentService {
         return """
                 You are an executive assistant. Analyze ONE email and return a single JSON object matching the schema.
 
+                LANGUAGE: %s
+
                 Output rules:
                 - summary: 1–2 sentences max, factual, no markdown. Must be about the email below — never invent senders, links, dates, or amounts that aren't in the text.
                 - badges: subset of [MEETING, RISK, EXTERNAL, AUTOMATED, VIP, FOLLOW_UP, NEWSLETTER, FINANCE].
@@ -458,6 +511,7 @@ public class EnrichmentService {
                 EMAIL BODY (may contain Gmail UI chrome around it — focus on the actual message text):
                 %s
                 """.formatted(
+                        languageDirective(),
                         nullToDash(item.sender()),
                         nullToDash(item.subject()),
                         nullToDash(item.time()),
@@ -468,6 +522,8 @@ public class EnrichmentService {
     private static String buildDraftPrompt(InboxItem item, String emailBody, String summary) {
         return """
                 Write three short reply drafts to the email below — one per tone.
+
+                LANGUAGE: %s
 
                 CONTENT REQUIREMENTS (apply to all three drafts):
                 - Address the actual question or ask. If the sender asked X, the draft answers X.
@@ -480,7 +536,6 @@ public class EnrichmentService {
                   Instead, write something only this specific email would prompt.
                 - Reference at least one concrete detail from the email body (a name, a date, the subject topic)
                   so the draft couldn't be confused with a reply to a different email.
-                - Match the LANGUAGE of the email: if it's in French, draft in French; Greek → Greek; etc.
                 - ≤80 words each. Plain text, no markdown, no signature block, no subject line, no meta commentary.
                 - Never invent dates, links, file names, prices, attendees, or commitments not in the original email.
 
@@ -502,6 +557,7 @@ public class EnrichmentService {
                 CONTEXT (your one-line summary of this email):
                 %s
                 """.formatted(
+                        languageDirective(),
                         nullToDash(item.sender()),
                         nullToDash(item.subject()),
                         truncate(emailBody, 3000),

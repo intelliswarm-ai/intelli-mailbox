@@ -209,4 +209,40 @@ public class InboxController {
     public Map<String, Object> health() {
         return Map.of("ok", true, "cached", pipeline.snapshot().size());
     }
+
+    /**
+     * Transparency endpoint: enumerate everything Intelli-mailbox is holding in
+     * its in-memory cache. Used by the UI to surface "what we have" so users can
+     * verify the AI's analysis traces back to actual scraped email content. No
+     * persistence — when the JVM stops, this state is gone.
+     */
+    @GetMapping("/cache/stats")
+    public Map<String, Object> cacheStats() {
+        Map<String, EnrichedEmail> snap = pipeline.snapshot();
+        java.util.List<Map<String, Object>> entries = new java.util.ArrayList<>(snap.size());
+        long totalBodyChars = 0L;
+        for (Map.Entry<String, EnrichedEmail> e : snap.entrySet()) {
+            EnrichedEmail email = e.getValue();
+            int bodyLen = pipeline.getCachedBody(e.getKey()).map(String::length).orElse(0);
+            totalBodyChars += bodyLen;
+            java.util.LinkedHashMap<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("id", e.getKey());
+            row.put("sender", email.item() == null ? "" : email.item().sender());
+            row.put("subject", email.item() == null ? "" : email.item().subject());
+            row.put("processedMs", email.processedMs());
+            row.put("badges", email.badges());
+            row.put("ctaCount", email.ctas() == null ? 0 : email.ctas().size());
+            row.put("hasReplyDrafts", email.replyDrafts() != null);
+            row.put("phishingSuspected", email.phishingSuspected());
+            row.put("failed", email.failed());
+            row.put("bodyChars", bodyLen);
+            entries.add(row);
+        }
+        return Map.of(
+                "ok", true,
+                "totalEmails", snap.size(),
+                "totalBodyChars", totalBodyChars,
+                "entries", entries
+        );
+    }
 }

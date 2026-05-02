@@ -50,6 +50,13 @@ public class EmailReader {
      */
     public synchronized List<InboxItem> listInbox() {
         ensureOnInboxListing(30_000);
+        // ensureOnInboxListing only no-ops when the listing is already in the
+        // DOM — it does NOT tell Gmail to fetch fresh state from the server.
+        // Without this extra step, "Refresh inbox" would just re-scrape the
+        // same DOM Gmail had at page load and would never see emails that
+        // arrived since (e.g. one the user just sent to themselves). Click
+        // Gmail's own Refresh button to force a real re-fetch.
+        forceGmailRefetch();
 
         // CRITICAL: each row reports its raw DOM index (its position among ALL
         // [role="row"] nodes, header included). The Java side uses that DOM
@@ -184,6 +191,58 @@ public class EmailReader {
      * <p>On a freshly-launched Chrome that's already on Gmail (the run.sh
      * pre-warm path), case (1) hits and we save the full 30s navigate timeout.
      */
+    /**
+     * Tell Gmail to re-fetch the inbox from the server. Tries Gmail's own
+     * "Refresh" button first (a circular-arrow icon in the toolbar with
+     * {@code aria-label="Refresh"} — internationalised, so we match
+     * case-insensitively on substrings like "refresh" / "actualizar" /
+     * "rafraîchir"). If we can't find that button (Gmail rotates DOM
+     * occasionally), we fall back to a hash-toggle: jump to a junk hash
+     * and back to {@code #inbox}, which re-routes Gmail's SPA and forces
+     * it to re-render the listing with fresh data.
+     *
+     * <p>After triggering refresh, we re-wait for the row nodes — they
+     * briefly disappear during refresh and the next caller's evaluate_js
+     * would see an empty listing.
+     */
+    private void forceGmailRefetch() {
+        String forceJs = "(() => {"
+                + "  const sels = ["
+                + "    'div[role=\"button\"][aria-label=\"Refresh\"]',"
+                + "    'div[role=\"button\"][aria-label=\"refresh\"]'"
+                + "  ];"
+                + "  for (const s of sels) { const b = document.querySelector(s);"
+                + "    if (b) { b.click(); return 'clicked-' + s; } }"
+                + "  const all = document.querySelectorAll('div[role=\"button\"][aria-label]');"
+                + "  for (const b of all) {"
+                + "    const al = (b.getAttribute('aria-label') || '').toLowerCase();"
+                + "    if (al.includes('refresh') || al.includes('reload')"
+                + "      || al.includes('actualizar') || al.includes('aktualisieren')"
+                + "      || al.includes('rafraîchir') || al.includes('aggiornare')) {"
+                + "      b.click(); return 'clicked-i18n:' + al; } }"
+                + "  const cur = location.hash || '#inbox';"
+                + "  location.hash = '#search/' + Date.now();"
+                + "  setTimeout(() => { location.hash = cur; }, 30);"
+                + "  return 'hash-toggled';"
+                + "})()";
+        try {
+            Object result = browser.execute(Map.of("operation", "evaluate_js", "code", forceJs));
+            logger.debug("forceGmailRefetch: {}", result);
+        } catch (Exception e) {
+            logger.debug("forceGmailRefetch failed (continuing with stale DOM): {}", e.toString());
+            return;
+        }
+        // Gmail tears down + rebuilds the row nodes during refresh. Wait up
+        // to 8s for the rebuilt rows to land before scraping.
+        try {
+            browser.execute(Map.of("operation", "wait_for",
+                    "selector", "[role=\"main\"] [role=\"row\"]",
+                    "timeout_ms", 8_000));
+        } catch (Exception e) {
+            logger.debug("forceGmailRefetch: rows didn't reappear in 8s — scraping anyway");
+        }
+    }
+
     private void ensureOnInboxListing(int waitMs) {
         // Combined probe: returns one of "ready" (already on listing),
         // "hashed" (was on Gmail, switched hash), "navigate" (need a hard nav).
