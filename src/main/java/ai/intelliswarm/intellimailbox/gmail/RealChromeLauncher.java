@@ -37,6 +37,17 @@ public final class RealChromeLauncher {
     public record LaunchResult(String cdpUrl, boolean wasAlreadyRunning, Process process) {}
 
     public static LaunchResult launch(Path userDataDir, int port) {
+        return launch(userDataDir, port, null);
+    }
+
+    /**
+     * @param initialUrl  if non-null, passed as the trailing positional argument
+     *                    so Chrome opens it in the first tab instead of the default
+     *                    new-tab page. Eliminates the otherwise-orphaned blank tab
+     *                    that would land at position 1 with the IntelliMailbox UI
+     *                    spawned later as a second tab.
+     */
+    public static LaunchResult launch(Path userDataDir, int port, String initialUrl) {
         String cdpUrl = "http://localhost:" + port;
 
         if (cdpReachable(cdpUrl)) {
@@ -54,13 +65,17 @@ public final class RealChromeLauncher {
                     "Cannot create user-data-dir " + userDataDir + ": " + e.getMessage(), e);
         }
 
-        ProcessBuilder pb = new ProcessBuilder(
+        java.util.List<String> command = new java.util.ArrayList<>(java.util.List.of(
                 chromePath,
                 "--remote-debugging-port=" + port,
                 "--user-data-dir=" + userDataDir.toAbsolutePath(),
                 "--no-first-run",
                 "--no-default-browser-check"
-        );
+        ));
+        if (initialUrl != null && !initialUrl.isBlank()) {
+            command.add(initialUrl);
+        }
+        ProcessBuilder pb = new ProcessBuilder(command);
         pb.redirectErrorStream(true);
         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         Process process;

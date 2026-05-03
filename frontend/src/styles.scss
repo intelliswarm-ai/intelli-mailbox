@@ -1,0 +1,108 @@
+/* ============================================================
+ * Theme variables — ported from legacy/index.html step 2.
+ *   :root              = Intelliswarm dark palette (default)
+ *   [data-theme=light] = white surfaces, Google-style accents
+ * ============================================================ */
+
+:root {
+  /* Tells the browser to render native form controls (select dropdowns,
+   * scrollbars, date pickers) with dark surfaces. Without this the
+   * <option> popup rendered by the OS uses the light palette and looks
+   * jarring on top of our dark theme. */
+  color-scheme: dark;
+
+  --bg-primary:     #08080d;
+  --bg-secondary:   rgba(8, 8, 13, 0.6);
+  /* Solid surface for modal cards. --bg-secondary is translucent because the
+   * header relies on its blur effect — but modals would show inbox rows
+   * bleeding through, so they get their own opaque variant. */
+  --bg-modal:       #11111c;
+  --bg-card:        linear-gradient(180deg, rgba(141, 141, 185, 0.16) 0%, rgba(8, 8, 12, 0) 100%);
+  --bg-card-hover:  linear-gradient(180deg, rgba(165, 112, 255, 0.18) 0%, rgba(8, 8, 12, 0) 100%);
+  /* Faint white frost so input surfaces (range picker, search box, settings
+   * fields, code chips) lift off the near-black body. The previous
+   * rgba(0,0,0,0.30) on top of #08080d was barely distinguishable from the
+   * body — dropdowns looked invisible until hovered. */
+  --bg-input:       rgba(255, 255, 255, 0.05);
+  --bg-header:      rgba(8, 8, 13, 0.6);
+  --border-subtle:  #27243b;
+  --border-section: #201c39;
+  --text-primary:   #c0c0d8;
+  --text-secondary: #a6a6c9;
+  --text-muted:     #8181b1;
+  --text-heading:   #ffffff;
+  --accent:         #a570ff;
+  --accent-2:       #ff6eb2;
+  --accent-dim:     rgba(165, 112, 255, 0.15);
+  --accent-glow:    rgba(165, 112, 255, 0.45);
+  --gradient-brand: linear-gradient(98deg, #a570ff 0%, #ff6eb2 50%, #ffad66 100%);
+  --color-success:  #66bb6a;
+  --color-warning:  #ffad66;
+  --color-error:    #ff6e6e;
+  --color-info:     #4fc3f7;
+  --shadow-card:    0 1px 0 rgba(255,255,255,0.02) inset;
+  --header-blur:    blur(8px);
+  --font-sans:      'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:      'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-primary:     #f6f8fc;
+  --bg-secondary:   #ffffff;
+  --bg-modal:       #ffffff;
+  --bg-card:        #ffffff;
+  --bg-card-hover:  #f1f3f4;
+  --bg-input:       #ffffff;
+  --bg-header:      #ffffff;
+  --border-subtle:  #dadce0;
+  --border-section: #e8eaed;
+  --text-primary:   #3c4043;
+  --text-secondary: #5f6368;
+  --text-muted:     #80868b;
+  --text-heading:   #202124;
+  --accent:         #1a73e8;
+  --accent-2:       #c5221f;
+  --accent-dim:     rgba(26, 115, 232, 0.10);
+  --accent-glow:    rgba(26, 115, 232, 0.25);
+  --gradient-brand: linear-gradient(98deg, #1a73e8 0%, #c5221f 100%);
+  --color-success:  #188038;
+  --color-warning:  #f9ab00;
+  --color-error:    #d93025;
+  --color-info:     #1a73e8;
+  --shadow-card:    0 1px 2px rgba(60, 64, 67, 0.08), 0 1px 3px rgba(60, 64, 67, 0.04);
+  --header-blur:    none;
+  --font-sans:      'Roboto', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Native <select> dropdown items are rendered by the OS but Chrome respects
+ * an explicit background-color on <option>. Without this, the open popup
+ * in the Intelliswarm dark theme picks up a translucent surface and the
+ * highlighted item nearly blends into the unhighlighted ones. Forcing a
+ * solid surface keeps the items legible. */
+select {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}

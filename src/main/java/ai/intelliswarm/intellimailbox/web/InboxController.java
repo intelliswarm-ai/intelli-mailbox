@@ -17,10 +17,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -44,12 +48,38 @@ public class InboxController {
     private final EmailReader reader;
     private final ai.intelliswarm.intellimailbox.system.IdleShutdownManager idleShutdown;
 
+    /** Live SSE emitters. Tracked so we can complete() them on JVM shutdown
+     *  — otherwise Tomcat's graceful drain hits its 30s timeout waiting for
+     *  these long-lived connections, aborts, and the JVM ends up hung. */
+    private final Set<SseEmitter> activeEmitters = ConcurrentHashMap.newKeySet();
+
     public InboxController(PreprocessingPipeline pipeline,
                            EmailReader reader,
                            ai.intelliswarm.intellimailbox.system.IdleShutdownManager idleShutdown) {
         this.pipeline = pipeline;
         this.reader = reader;
         this.idleShutdown = idleShutdown;
+    }
+
+    /** On shutdown, eagerly complete every live SSE stream so Tomcat's
+     *  graceful drain finishes immediately instead of timing out at 30s
+     *  and leaving the JVM in a half-stopped state that holds the port.
+     *
+     *  Why ContextClosedEvent and not @PreDestroy: @PreDestroy fires AFTER
+     *  the SmartLifecycle stop phase, which is when Tomcat's GracefulShutdown
+     *  has already started waiting for active requests (including these very
+     *  emitters) — closing them there is too late. ContextClosedEvent fires
+     *  at the start of context close, before lifecycle stop, so by the time
+     *  Tomcat begins draining there are no active SSE requests left. */
+    @EventListener(ContextClosedEvent.class)
+    public void closeAllEmitters() {
+        int n = activeEmitters.size();
+        if (n == 0) return;
+        logger.info("Shutdown: completing {} live SSE emitter(s)", n);
+        for (SseEmitter e : activeEmitters) {
+            try { e.complete(); } catch (Throwable ignored) { /* best-effort */ }
+        }
+        activeEmitters.clear();
     }
 
     @GetMapping("/inbox")
@@ -117,12 +147,14 @@ public class InboxController {
             }
         };
         pipeline.subscribe(sink);
+        activeEmitters.add(emitter);
         // Tell the IdleShutdownManager a browser is here — cancels any
         // pending "no clients, shutting down" timer.
         idleShutdown.clientConnected();
 
         Runnable cleanup = () -> {
             pipeline.unsubscribe(sink);
+            activeEmitters.remove(emitter);
             // Tell the IdleShutdownManager this browser is gone. If it was
             // the last one, the manager will start the grace-period timer.
             idleShutdown.clientDisconnected();

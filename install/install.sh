@@ -25,7 +25,7 @@ set -euo pipefail
 # API for the latest release and use whatever's published. The fallback
 # only kicks in for offline-ish scenarios. Set IM_VERSION=x.y.z to skip
 # the API call entirely (useful for pinned CI installs).
-FALLBACK_VERSION="0.1.2"
+FALLBACK_VERSION="0.1.3"
 
 # Always-latest by default. Override priority:
 #   1. $IM_VERSION (env)        → strict pin, no network call

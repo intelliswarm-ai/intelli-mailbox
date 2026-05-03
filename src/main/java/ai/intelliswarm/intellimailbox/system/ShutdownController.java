@@ -51,9 +51,31 @@ public class ShutdownController {
         return Map.of("ok", true);
     }
 
+    /** Hard deadline for the entire shutdown sequence. If clean exit hasn't
+     *  finished by then, the watchdog calls {@link Runtime#halt} to terminate
+     *  the JVM unconditionally. We've seen Spring's graceful Tomcat shutdown
+     *  hang past its own 30s timeout, leaving the JVM half-alive and holding
+     *  port 8090 — which makes the next launch fail with "port already in use".
+     *  10s after the request is plenty: 1s response delay + ~1-2s real teardown
+     *  with SSE emitters closed eagerly by InboxController.@PreDestroy. */
+    private static final long SHUTDOWN_DEADLINE_MS = 10_000;
+
     @PostMapping("/shutdown")
     public Map<String, Object> shutdown() {
-        logger.info("Shutdown requested via /api/shutdown — exiting in 1s");
+        logger.info("Shutdown requested via /api/shutdown — exiting in 1s, hard-deadline {}s",
+                SHUTDOWN_DEADLINE_MS / 1000);
+
+        // Watchdog: regardless of what happens with Spring's exit, force-kill
+        // the JVM at the deadline. Daemon thread + Runtime.halt skips any
+        // remaining shutdown hooks (which is the point — they're what's hanging).
+        Thread watchdog = new Thread(() -> {
+            try { Thread.sleep(SHUTDOWN_DEADLINE_MS); } catch (InterruptedException ie) { return; }
+            logger.warn("Shutdown watchdog: deadline reached — forcing Runtime.halt(2)");
+            Runtime.getRuntime().halt(2);
+        }, "intellimailbox-shutdown-watchdog");
+        watchdog.setDaemon(true);
+        watchdog.start();
+
         // Off-thread, deferred so the HTTP response makes it back to the user.
         new Thread(() -> {
             try { Thread.sleep(1_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }

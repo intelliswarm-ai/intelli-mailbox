@@ -23,7 +23,7 @@ $ErrorActionPreference = 'Stop'
 # this is OPTIONAL — the script's first move is to ask the GitHub API for
 # the latest release tag and use that. Set $env:IM_VERSION='x.y.z' to
 # bypass the API call (useful for pinned CI installs).
-$FALLBACK_VERSION = '0.1.2'
+$FALLBACK_VERSION = '0.1.3'
 
 # Always-latest by default. Resolution priority:
 #   1. $env:IM_VERSION         → strict pin, no network call

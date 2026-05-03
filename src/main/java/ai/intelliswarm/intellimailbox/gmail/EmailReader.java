@@ -41,7 +41,7 @@ public class EmailReader {
                        @org.springframework.beans.factory.annotation.Value(
                                "${intellimailbox.preprocessing.max-emails:25}") int maxEmails,
                        @org.springframework.beans.factory.annotation.Value(
-                               "${intellimailbox.preprocessing.max-emails-ranged:200}") int maxEmailsRanged) {
+                               "${intellimailbox.preprocessing.max-emails-ranged:1000}") int maxEmailsRanged) {
         this.browser = browser;
         this.maxEmails = maxEmails;
         this.maxEmailsRanged = maxEmailsRanged;

@@ -42,8 +42,16 @@ swarmai:
 
 intellimailbox:
   preprocessing:
-    # Cap concurrent inbox rows pulled per refresh (BrowserTool is single-page-serial)
+    # Cap rows pulled when no date range is given (uses Gmail's default
+    # listing — first page only). BrowserTool is single-page-serial so
+    # this also bounds wall-time per refresh.
     max-emails: ${INTELLIMAILBOX_MAX_EMAILS:25}
+    # Cap rows pulled when a date range IS given (1d, 2d, 7d, 14d, 30d, all).
+    # Gmail paginates ~50 rows per page; expect ~1.5–2s of scrape time per
+    # page, so 1000 ≈ 30s on a fast machine for the busiest 30d window.
+    # Bump higher with INTELLIMAILBOX_MAX_EMAILS_RANGED if you have a heavy
+    # inbox and don't mind the wait.
+    max-emails-ranged: ${INTELLIMAILBOX_MAX_EMAILS_RANGED:1000}
     # Generous timeout per email — cold local Ollama can take 60s+ on CPU.
     per-email-timeout-ms: ${INTELLIMAILBOX_TIMEOUT_MS:300000}
 

@@ -4495,17 +4495,47 @@ async function testProvider(providerId) {
 }
 
 /**
+ * Custom confirm() replacement for the Quit flow. Native confirm() gets
+ * silenced by Chrome (e.g. after the user dismisses one with "prevent
+ * additional dialogs", or in some focus/visibility states) — it then
+ * returns false with no error, and the Quit button appears dead. The
+ * in-app overlay below uses the same helpMount + .help-overlay pattern
+ * as the keyboard-shortcuts panel, so it always renders.
+ */
+function confirmQuit() {
+  return new Promise((resolve) => {
+    helpMount.innerHTML = `
+      <div class="help-overlay" data-quit-backdrop>
+        <div class="help-overlay-inner" style="max-width:480px">
+          <h3>⏻ Quit Intelli-mailbox?</h3>
+          <p style="color:var(--text-secondary); line-height:1.5; margin:0 0 18px; font-size:0.9rem;">
+            This stops the app entirely — closes the local server and frees the AI from memory.
+            You'll need to relaunch from the Start Menu (Windows) or Applications folder
+            (macOS / Linux) to use it again.
+          </p>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button type="button" class="secondary" id="quit-cancel">Cancel</button>
+            <button type="button" id="quit-confirm"
+                    style="border-color:var(--color-error); color:var(--color-error)">⏻ Quit</button>
+          </div>
+        </div>
+      </div>`;
+    const close = (ok) => { helpMount.innerHTML = ''; resolve(ok); };
+    helpMount.querySelector('#quit-confirm')?.addEventListener('click', () => close(true));
+    helpMount.querySelector('#quit-cancel') ?.addEventListener('click', () => close(false));
+    helpMount.querySelector('[data-quit-backdrop]')?.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) close(false);
+    });
+  });
+}
+
+/**
  * Backup quit path for users who didn't notice the system-tray icon.
  * Confirms, hits /api/shutdown, then renders a full-page "stopped"
  * confirmation so the user understands the app is no longer running.
  */
 async function quitApp() {
-  if (!confirm("Quit Intelli-mailbox? This will stop the app entirely "
-             + "(closes the local server and frees the AI from memory). "
-             + "You'll need to relaunch from the Start Menu / Applications "
-             + "folder to use it again.")) {
-    return;
-  }
+  if (!(await confirmQuit())) return;
   try {
     await fetch('/api/shutdown', { method: 'POST' });
   } catch (e) { /* server might cut the connection mid-response — that's fine */ }

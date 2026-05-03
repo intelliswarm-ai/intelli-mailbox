@@ -77,9 +77,15 @@ public class IntelliMailboxApp {
                             Paths.get(System.getProperty("user.home"),
                                     ".intelliswarm", "intellimailbox-chrome").toString()));
 
+            String uiUrl = "http://localhost:" + System.getProperty("server.port", "8090") + "/";
+
             RealChromeLauncher.LaunchResult chrome;
             try {
-                chrome = RealChromeLauncher.launch(profileDir, 9222);
+                // Pass uiUrl as the initial URL so Chrome opens with the IntelliMailbox
+                // UI in tab 1 instead of its default new-tab page (which would otherwise
+                // sit there as an orphaned blank tab for the lifetime of the session,
+                // and remain in the user's session restore after Quit).
+                chrome = RealChromeLauncher.launch(profileDir, 9222, uiUrl);
             } catch (IllegalStateException e) {
                 logger.error("IntelliMailbox couldn't launch real Chrome: {}", e.getMessage());
                 return;
@@ -107,7 +113,6 @@ public class IntelliMailboxApp {
             // Skipping the prewarm trades nothing — the first refreshInbox()
             // does the navigate on demand via ensureOnInboxListing() anyway.
 
-            String uiUrl = "http://localhost:" + System.getProperty("server.port", "8090") + "/";
             logger.info("");
             logger.info("=".repeat(80));
             logger.info("  IntelliMailbox is up");
@@ -120,7 +125,13 @@ public class IntelliMailboxApp {
             logger.info("  inbox auto-populate — each email is analyzed locally as it loads.");
             logger.info("=".repeat(80));
 
-            openInAttachedChrome(uiUrl, 9222);
+            // Only spawn a new tab when Chrome was already running and we attached
+            // to it — in that case Chrome wasn't told about the UI URL at launch.
+            // For a fresh launch the URL was passed as the initial positional arg
+            // and is already loaded in tab 1, so opening another tab would dupe it.
+            if (chrome.wasAlreadyRunning()) {
+                openInAttachedChrome(uiUrl, 9222);
+            }
         };
     }
 

@@ -36,3 +36,11 @@ docs/internal/
 # .claude/settings.json (if any) IS committed; *.local.json is per-user.
 .claude/*.local.json
 .claude/.session/
+
+# Frontend (Angular). Source under frontend/src is committed; everything
+# else is built or downloaded by frontend-maven-plugin during `mvn package`.
+frontend/node/
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/out-tsc/

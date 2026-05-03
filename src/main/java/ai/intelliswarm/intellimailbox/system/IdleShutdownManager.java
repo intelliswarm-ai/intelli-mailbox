@@ -94,6 +94,11 @@ public class IdleShutdownManager {
         pendingShutdown = scheduler.schedule(this::doShutdown, grace, TimeUnit.SECONDS);
     }
 
+    /** Hard deadline. Same rationale as ShutdownController — the JVM has
+     *  hung past Spring's own 30s graceful timeout in the past, holding
+     *  port 8090. Force-halt if we don't exit cleanly in time. */
+    private static final long SHUTDOWN_DEADLINE_MS = 10_000;
+
     private void doShutdown() {
         synchronized (this) {
             // Re-check inside the synchronized block to avoid a race between
@@ -104,7 +109,17 @@ public class IdleShutdownManager {
                 return;
             }
         }
-        logger.info("Idle-shutdown timer fired with no clients — exiting");
+        logger.info("Idle-shutdown timer fired with no clients — exiting (hard-deadline {}s)",
+                SHUTDOWN_DEADLINE_MS / 1000);
+
+        Thread watchdog = new Thread(() -> {
+            try { Thread.sleep(SHUTDOWN_DEADLINE_MS); } catch (InterruptedException ie) { return; }
+            logger.warn("Idle-shutdown watchdog: deadline reached — forcing Runtime.halt(2)");
+            Runtime.getRuntime().halt(2);
+        }, "intellimailbox-idle-shutdown-watchdog");
+        watchdog.setDaemon(true);
+        watchdog.start();
+
         try {
             int code = SpringApplication.exit(context, () -> 0);
             System.exit(code);
