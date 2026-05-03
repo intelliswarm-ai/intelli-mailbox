@@ -162,23 +162,44 @@ jobs:
           }
           Write-Host "==> MSI installed."
 
-          # jpackage's per-user install drops the launcher under either
-          # %LOCALAPPDATA%\Intelli-mailbox or under Program Files when
-          # winPerUserInstall flips. Scan both — first match wins.
-          $candidates = @(
-              (Join-Path $env:LOCALAPPDATA 'Intelli-mailbox\Intelli-mailbox.exe'),
-              (Join-Path $env:LOCALAPPDATA 'Programs\Intelli-mailbox\Intelli-mailbox.exe'),
-              (Join-Path $env:ProgramFiles 'Intelli-mailbox\Intelli-mailbox.exe'),
-              (Join-Path ${env:ProgramFiles(x86)} 'Intelli-mailbox\Intelli-mailbox.exe')
-          )
-          $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $exe) {
-              Write-Host "==> Could not find launcher in known paths; scanning"
-              $exe = (Get-ChildItem -Recurse -ErrorAction SilentlyContinue `
-                        -Path $env:LOCALAPPDATA,$env:ProgramFiles,${env:ProgramFiles(x86)} `
-                        -Filter 'Intelli-mailbox.exe' | Select-Object -First 1).FullName
+          # jpackage uses pom.xml's <name> verbatim for the install directory
+          # and the launcher exe. <name>Intelli Mailbox</name> (with a space)
+          # produces "%LOCALAPPDATA%\Intelli Mailbox\Intelli Mailbox.exe" (or
+          # under Program Files when winPerUserInstall flips). Scan known
+          # locations for both the spaced and hyphenated variants so this
+          # keeps working if we rename later.
+          $names = @('Intelli Mailbox', 'Intelli-mailbox', 'IntelliMailbox')
+          $roots = @(
+              $env:LOCALAPPDATA,
+              (Join-Path $env:LOCALAPPDATA 'Programs'),
+              $env:ProgramFiles,
+              ${env:ProgramFiles(x86)}
+          ) | Where-Object { $_ -and (Test-Path $_) }
+
+          $exe = $null
+          foreach ($n in $names) {
+              foreach ($r in $roots) {
+                  $p = Join-Path $r "$n\$n.exe"
+                  if (Test-Path $p) { $exe = $p; break }
+              }
+              if ($exe) { break }
           }
-          if (-not $exe) { throw "Intelli-mailbox.exe not found after install" }
+          if (-not $exe) {
+              Write-Host "==> Not in known paths; recursive scan of LOCALAPPDATA + Program Files"
+              $exe = (Get-ChildItem -Recurse -ErrorAction SilentlyContinue `
+                        -Path $roots `
+                        -Include 'Intelli Mailbox.exe','Intelli-mailbox.exe','IntelliMailbox.exe' |
+                      Select-Object -First 1).FullName
+          }
+          if (-not $exe) {
+              Write-Host "==> Still not found. Listing candidate roots for debugging:"
+              foreach ($r in $roots) {
+                  Write-Host "----- $r -----"
+                  Get-ChildItem $r -Filter '*ailbox*' -ErrorAction SilentlyContinue |
+                      Select-Object -ExpandProperty FullName
+              }
+              throw "Launcher .exe not found after install"
+          }
           Write-Host "==> Launcher: $exe"
 
           # Run on a non-default port to avoid clashing with anything on the runner.
@@ -217,12 +238,17 @@ jobs:
                   if (Test-Path "$appLog.err") { Get-Content "$appLog.err" -Tail 80 }
               }
               try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
-              # Belt-and-braces — kill any stray child JVM that the launcher spawned.
-              Get-Process -Name 'Intelli-mailbox*' -ErrorAction SilentlyContinue |
+              # Belt-and-braces: kill any stray child JVM the launcher spawned.
+              # Match both the spaced ("Intelli Mailbox") and hyphenated names.
+              Get-Process -ErrorAction SilentlyContinue |
+                  Where-Object { $_.ProcessName -match '^(Intelli[- ]?[Mm]ailbox)$' } |
                   Stop-Process -Force -ErrorAction SilentlyContinue
-              Get-Process -Name 'java*' -ErrorAction SilentlyContinue |
-                  Where-Object { $_.Path -and $_.Path.StartsWith($exe.Substring(0, $exe.LastIndexOf('\\'))) } |
-                  Stop-Process -Force -ErrorAction SilentlyContinue
+              if ($exe) {
+                  $exeDir = Split-Path -Parent $exe
+                  Get-Process -Name 'java*' -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Path -and $_.Path.StartsWith($exeDir) } |
+                      Stop-Process -Force -ErrorAction SilentlyContinue
+              }
           }
 
       # =====================================================================
