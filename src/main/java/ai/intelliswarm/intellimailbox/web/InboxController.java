@@ -65,9 +65,33 @@ public class InboxController {
         // unscoped inbox listing (the legacy behaviour).
         String passToReader = "all".equals(effectiveRange) ? null : effectiveRange;
         List<InboxItem> items = pipeline.refresh(passToReader);
-        logger.info("/api/inbox(range={}) → {} items in {}ms (enrichment queued in background)",
+        logger.info("/api/inbox(range={}) → {} items in {}ms (no enrichment — review-first)",
                 effectiveRange, items.size(), System.currentTimeMillis() - t0);
         return items;
+    }
+
+    /**
+     * Explicit "Process inbox" trigger. Lists the current inbox at the given
+     * range and enqueues enrichment for every row that isn't excluded /
+     * already cached. Until this is called, refresh is a pure listing — no
+     * LLM tokens are spent. Returns the count of rows actually queued plus
+     * the totals so the UI can show "Processing 12 of 15 (3 excluded)".
+     */
+    @PostMapping("/inbox/process")
+    public Map<String, Object> processInbox(
+            @org.springframework.web.bind.annotation.RequestParam(value = "range", required = false) String range) {
+        String effectiveRange = (range == null || range.isBlank()) ? "1d" : range.trim().toLowerCase();
+        String passToReader = "all".equals(effectiveRange) ? null : effectiveRange;
+        long t0 = System.currentTimeMillis();
+        List<InboxItem> items = pipeline.refresh(passToReader);
+        int queued = pipeline.processItems(items);
+        logger.info("/api/inbox/process(range={}) → queued={}/{} in {}ms",
+                effectiveRange, queued, items.size(), System.currentTimeMillis() - t0);
+        return Map.of(
+                "ok", true,
+                "queued", queued,
+                "total", items.size(),
+                "range", effectiveRange);
     }
 
     @GetMapping(path = "/inbox/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -229,6 +253,19 @@ public class InboxController {
     @GetMapping("/health")
     public Map<String, Object> health() {
         return Map.of("ok", true, "cached", pipeline.snapshot().size());
+    }
+
+    /**
+     * Verification endpoint: returns the exact set of email ids the backend
+     * currently considers "in flight" (queued + actively enriching). Used by
+     * the UI's debug line to confirm "we picked 32 emails, the backend is
+     * working on 32 — not the whole inbox". Backed by the pipeline's leases
+     * map, so it's the truth, not a frontend approximation.
+     */
+    @GetMapping("/processing")
+    public Map<String, Object> processing() {
+        java.util.List<String> ids = pipeline.inFlightIds();
+        return Map.of("ok", true, "count", ids.size(), "ids", ids);
     }
 
     /**

@@ -1399,9 +1399,175 @@
     footer a:hover { color: var(--accent-2); }
     footer .brand-mark-link { text-decoration: none; }
     footer .brand-mark { font-size: 0.85rem; }
+
+    /* Right-click context menu for inbox rows. One global instance, positioned
+       per click. Hidden by default; shown via JS by setting display=block. */
+    #row-context-menu {
+      position: fixed;
+      z-index: 9000;
+      min-width: 220px;
+      background: var(--bg-card, #1e1e1e);
+      border: 1px solid var(--border-section, #333);
+      border-radius: 6px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+      padding: 4px 0;
+      display: none;
+      font-size: 0.86rem;
+    }
+    #row-context-menu .ctx-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 8px 14px;
+      background: transparent;
+      border: 0;
+      color: var(--text-primary, #e0e0e0);
+      cursor: pointer;
+    }
+    #row-context-menu .ctx-item:hover { background: var(--bg-hover, #2a2a2a); }
+    #row-context-menu .ctx-item-sub {
+      padding: 2px 14px 6px;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+    }
+    #row-context-menu .ctx-sep {
+      height: 1px; background: var(--border-subtle, #2a2a2a); margin: 4px 0;
+    }
+    /* Settings: excluded senders list */
+    .excluded-senders-list {
+      list-style: none; padding: 0; margin: 6px 0 0 0;
+      max-height: 140px; overflow-y: auto;
+      border: 1px solid var(--border-subtle); border-radius: 6px;
+    }
+    .excluded-senders-list li {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 8px; font-size: 0.82rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .excluded-senders-list li:last-child { border-bottom: 0; }
+    .excluded-senders-list .sender-text { flex: 1; word-break: break-all; }
+    .excluded-senders-list .sender-empty {
+      padding: 8px; color: var(--text-muted); font-size: 0.78rem; font-style: italic;
+    }
+    .excluded-senders-row { display: flex; gap: 6px; margin-top: 6px; }
+    .excluded-senders-row input {
+      flex: 1; background: var(--bg-input); border: 1px solid var(--border-subtle);
+      border-radius: 6px; padding: 4px 8px; font-size: 0.84rem;
+      color: var(--text-primary); font-family: var(--font-sans);
+    }
+    /* Status filter pill bar — sits between the toolbar and the inbox.
+       One pill per bucket; clicking flips the filter. */
+    .status-filter-bar {
+      padding: 8px 24px; display: flex; gap: 6px; flex-wrap: wrap;
+      border-bottom: 1px solid var(--border-section);
+      background: var(--bg-card-subtle, var(--bg-card));
+      font-size: 0.82rem;
+    }
+    .status-filter-bar .sf-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      background: transparent; color: var(--text-secondary);
+      border: 1px solid var(--border-subtle); border-radius: 999px;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .status-filter-bar .sf-pill:hover {
+      background: var(--bg-hover, rgba(255,255,255,0.04));
+    }
+    .status-filter-bar .sf-pill.active {
+      background: var(--accent); color: var(--bg-primary, #111);
+      border-color: var(--accent);
+    }
+    .status-filter-bar .sf-pill .sf-count {
+      font-variant-numeric: tabular-nums; font-weight: 600;
+      padding: 0 6px; border-radius: 8px;
+      background: rgba(255,255,255,0.07); font-size: 0.74rem;
+    }
+    .status-filter-bar .sf-pill.active .sf-count {
+      background: rgba(0,0,0,0.18);
+    }
+
+    /* "Process all" sender-selection modal */
+    #process-modal {
+      position: fixed; inset: 0; z-index: 9200;
+      background: rgba(0,0,0,0.55);
+      display: none; align-items: center; justify-content: center;
+    }
+    #process-modal.visible { display: flex; }
+    #process-modal .pm-card {
+      width: min(560px, 92vw); max-height: 80vh;
+      background: var(--bg-card,#1d1d1d); color: var(--text-primary,#e0e0e0);
+      border: 1px solid var(--border-section,#333); border-radius: 8px;
+      display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+    }
+    #process-modal .pm-head {
+      padding: 14px 18px; border-bottom: 1px solid var(--border-subtle);
+      display: flex; align-items: center; gap: 10px;
+    }
+    #process-modal .pm-head h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+    #process-modal .pm-head .pm-meta {
+      margin-left: auto; font-size: 0.78rem; color: var(--text-muted);
+    }
+    #process-modal .pm-body { padding: 8px 12px; overflow-y: auto; flex: 1; }
+    #process-modal .pm-row {
+      display: grid; grid-template-columns: auto 1fr auto auto;
+      gap: 8px; align-items: center;
+      padding: 6px 8px; border-bottom: 1px solid var(--border-subtle);
+      font-size: 0.86rem;
+    }
+    #process-modal .pm-row:last-child { border-bottom: 0; }
+    #process-modal .pm-row .pm-sender { word-break: break-all; }
+    #process-modal .pm-row .pm-count {
+      font-size: 0.78rem; color: var(--text-muted); white-space: nowrap;
+    }
+    #process-modal .pm-row .pm-exclude-btn {
+      font-size: 0.74rem; padding: 2px 8px; opacity: 0.8;
+    }
+    #process-modal .pm-foot {
+      padding: 12px 18px; border-top: 1px solid var(--border-subtle);
+      display: flex; gap: 8px; align-items: center; justify-content: flex-end;
+    }
+    #process-modal .pm-toolbar {
+      padding: 6px 12px; border-bottom: 1px solid var(--border-subtle);
+      display: flex; gap: 8px; font-size: 0.78rem;
+    }
+    #process-modal .pm-toolbar button {
+      font-size: 0.78rem; padding: 2px 8px;
+    }
   </style>
 </head>
 <body>
+  <!-- Floating right-click context menu for inbox rows. Position is set by
+       JS (clientX/Y); content is rebuilt each open so we can show the
+       sender being acted on. -->
+  <div id="row-context-menu" role="menu" aria-hidden="true"></div>
+
+  <!-- "Process all" picker. Opened by btn-process; lists each unique sender
+       in the current inbox with a checkbox. Pick which senders to analyze
+       in this batch (default: all not-yet-excluded). One-click "Exclude
+       permanently" per sender adds to the disk-saved exclude list too. -->
+  <div id="process-modal" role="dialog" aria-modal="true" aria-labelledby="process-modal-title">
+    <div class="pm-card">
+      <div class="pm-head">
+        <h2 id="process-modal-title">Choose senders to process</h2>
+        <span class="pm-meta" id="process-modal-meta"></span>
+      </div>
+      <div class="pm-toolbar">
+        <button type="button" class="secondary" id="process-modal-all">Select all</button>
+        <button type="button" class="secondary" id="process-modal-none">Select none</button>
+        <span style="margin-left:auto; color: var(--text-muted)">
+          Tip: 🚫 button next to a sender adds them to the permanent excluded list.
+        </span>
+      </div>
+      <div class="pm-body" id="process-modal-body"></div>
+      <div class="pm-foot">
+        <button type="button" class="secondary" id="process-modal-cancel">Cancel</button>
+        <button type="button" id="process-modal-confirm">Process selected</button>
+      </div>
+    </div>
+  </div>
+
   <header>
     <div class="brand-block">
       <h1>Intelli<span class="accent">-mailbox</span></h1>
@@ -1421,6 +1587,13 @@
 
   <div class="toolbar">
     <button id="btn-refresh">↻ Refresh inbox</button>
+    <!-- Explicit "process all" trigger so refresh stays free of LLM cost.
+         Per-row 🔍 Analyze buttons let you process selectively;
+         this button is the bulk shortcut for "process every row that
+         isn't on the excluded-senders list". -->
+    <button id="btn-process" title="Run AI analysis on every listed email (skips senders on the excluded list). Use the per-row 🔍 Analyze button to pick individual emails instead.">
+      ▶ Process all
+    </button>
     <label class="range-picker" title="How far back to fetch from Gmail">
       <span class="range-label">📅</span>
       <select id="range-select">
@@ -1453,6 +1626,12 @@
     </button>
     <span class="meta" id="meta">No inbox loaded yet</span>
   </div>
+
+  <!-- Status filter pills — let the user drill into a single bucket
+       (Analyzing / Analyzed / Pending / Excluded / Failed) so it's obvious
+       what's been processed vs what hasn't. Built dynamically by
+       renderStatusFilterBar() so counts stay live. -->
+  <div class="status-filter-bar" id="status-filter-bar" style="display:none"></div>
 
   <div class="badge-bar" id="badge-bar"></div>
 
@@ -1546,6 +1725,26 @@ const state = {
   // Lets the UI render summary text appearing word-by-word before the structured pass
   // (badges/ctas/drafts) finishes.
   streaming: {},                // id → { text: "summary so far" }
+  // Lowercased, trimmed sender strings the user has chosen to skip. Rows
+  // matching any entry here render a "Skipped" placeholder instead of the
+  // queued/streaming/summary view, AND the backend skips enrichment for
+  // them — so no LLM tokens are spent. Loaded on boot via refreshExcludedSenders().
+  excludedSenders: new Set(),
+  // Inbox ids the USER has explicitly asked to analyze (clicked Analyze or
+  // ▶ Process). Drives the "⌛ Analyzing…" placeholder vs the default
+  // "🔍 Analyze this email" CTA. SSE handlers clear ids when the email
+  // event lands. This is purely client-side — the backend tracks the same
+  // via inFlight, but exposing it on each /api/inbox response would mean
+  // an extra round-trip per refresh.
+  queued: new Set(),
+  // Status filter — restricts the visible inbox to one bucket. Values:
+  //   'all'         (default) — every row
+  //   'analyzing'   — queued or mid-stream
+  //   'analyzed'    — enriched (not failed)
+  //   'pending'     — none of the above (not yet picked for processing)
+  //   'excluded'    — sender on the do-not-process list
+  //   'failed'      — enrichment errored out
+  statusFilter: 'all',
   // Filter persists across hard-refresh via localStorage. Server cache + SSE replay
   // restore items+enrichments on its own — this just keeps the user's chosen view.
   filter: (() => { try { return localStorage.getItem(FILTER_KEY) || null; } catch (e) { return null; } })(),
@@ -1975,20 +2174,49 @@ function wireDraftHandlers(scope) {
 function renderRow(item) {
   const enriched = state.enriched[item.id];
   const streaming = state.streaming[item.id];
+  // If the sender is on the user's "do not process" list, short-circuit
+  // every other state — no spinner, no streaming text, no summary. The
+  // backend has already skipped enrichment for this row, so we'd otherwise
+  // render a permanent "Queued" placeholder which is misleading.
+  const senderKey = (item.sender || '').trim().toLowerCase();
+  const isExcluded = state.excludedSenders && state.excludedSenders.has(senderKey);
   let bodyHtml = '';
-  if (!enriched && streaming) {
+  if (isExcluded) {
+    bodyHtml = `
+      <div class="email-body">
+        <div class="processing" style="color:var(--text-muted)">
+          🚫 Skipped — sender excluded.
+          <button type="button" class="secondary" data-action="reinclude" data-sender="${escapeHtml(item.sender || '')}"
+                  style="margin-left:8px; padding:2px 8px; font-size:0.78rem">
+            Re-enable
+          </button>
+        </div>
+      </div>`;
+  } else if (!enriched && streaming) {
     // Mid-stream: summary materialising. Structured fields (badges/ctas/drafts)
     // arrive when the final `email` event lands.
     bodyHtml = `
       <div class="email-body">
         <div class="summary">${escapeHtml(streaming.text)}<span class="stream-cursor"></span></div>
       </div>`;
+  } else if (!enriched && state.queued && state.queued.has(String(item.id))) {
+    // User explicitly asked for this row (▶ Process or per-row 🔍 Analyze).
+    // Backend's enricher runs serially — most queued rows wait their turn.
+    bodyHtml = `<div class="email-body"><div class="processing">⌛ Analyzing… (one at a time)</div></div>`;
   } else if (!enriched) {
-    // Distinguish queued (haven't started — backend is serial, so most rows sit
-    // here) from actively-streaming (handled in the !enriched && streaming
-    // branch above). A spinner on every queued row would falsely suggest 25
-    // parallel jobs when in fact only one is running at a time.
-    bodyHtml = `<div class="email-body"><div class="processing">⌛ Queued · waiting for the analyzer</div></div>`;
+    // Default state for an unprocessed row. No LLM tokens spent yet — user
+    // chooses per-row whether to spend them. Dimmer styling + an inline
+    // CTA so "do nothing" looks intentional, not stuck.
+    bodyHtml = `
+      <div class="email-body">
+        <div class="processing" style="color:var(--text-muted)">
+          📩 Not analyzed yet —
+          <button type="button" class="secondary" data-action="analyze" data-id="${item.id}"
+                  style="margin-left:6px; padding:2px 10px; font-size:0.8rem">
+            🔍 Analyze this email
+          </button>
+        </div>
+      </div>`;
   } else if (enriched.failed) {
     bodyHtml = `<div class="email-body"><div class="summary">⚠ ${escapeHtml(enriched.summary)}</div></div>`;
   } else {
@@ -2067,6 +2295,10 @@ function renderList() {
   // Action Items panel is rendered in BOTH views (above the list / digest)
   // so users get aggregated CTAs without having to switch views.
   renderActionPanel();
+  // Hide the status filter bar in non-inbox views; renderStatusFilterBar()
+  // shows it again when we're back in inbox mode.
+  const sfBar = document.getElementById('status-filter-bar');
+  if (sfBar && state.view !== 'inbox') sfBar.style.display = 'none';
   if (state.view === 'digest') {
     list.style.display = 'none';
     digestEl.style.display = 'grid';
@@ -2103,26 +2335,182 @@ function renderList() {
   if (state.items.length === 0) {
     empty.style.display = 'block';
     list.innerHTML = '';
+    // Hide the filter bar when there's nothing to filter.
+    const sfBar2 = document.getElementById('status-filter-bar');
+    if (sfBar2) sfBar2.style.display = 'none';
     return;
   }
   empty.style.display = 'none';
   let visible = state.items;
   if (state.filter) {
-    visible = state.items.filter(i =>
+    visible = visible.filter(i =>
       (state.enriched[i.id]?.badges || []).includes(state.filter));
+  }
+  // Status filter — wins on top of badge filter so e.g. "Analyzing AND
+  // urgent" is expressible just by clicking both. 'all' is the no-op default.
+  if (state.statusFilter && state.statusFilter !== 'all') {
+    visible = visible.filter(i => getRowStatus(i) === state.statusFilter);
+  }
+  renderStatusFilterBar();
+  if (visible.length === 0 && state.items.length > 0) {
+    // Have items, but the active filter hides them all. Show a friendlier
+    // empty state than the generic "no emails" message.
+    list.innerHTML = `
+      <div style="padding:32px; text-align:center; color:var(--text-muted)">
+        No emails match the <b>${escapeHtml(state.statusFilter)}</b> filter.
+        <br><br>
+        <button type="button" class="secondary" onclick="state.statusFilter='all'; renderList();">
+          Clear filter
+        </button>
+      </div>`;
+    return;
   }
   list.innerHTML = visible.map(renderRow).join('');
   list.querySelectorAll('button[data-action="reprocess"]').forEach(b =>
     b.addEventListener('click', (ev) => { ev.stopPropagation(); reprocess(b.dataset.id); }));
+  // Per-row "🔍 Analyze this email" button: spends the LLM call for one
+  // specific row only. Reuses the existing /reprocess endpoint (which
+  // queues the row regardless of cache state — works as both first-time
+  // analyze and force-re-analyze).
+  list.querySelectorAll('button[data-action="analyze"]').forEach(b =>
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      analyzeOne(b.dataset.id);
+    }));
+  // "Re-enable" button on excluded-sender placeholders: removes the sender
+  // from the do-not-process list and per-row Analyze becomes available.
+  list.querySelectorAll('button[data-action="reinclude"]').forEach(b =>
+    b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const sender = b.dataset.sender;
+      try {
+        await fetch('/api/excluded-senders/' + encodeURIComponent(sender), { method: 'DELETE' });
+      } catch (e) { /* swallow — refreshExcludedSenders below will resync */ }
+      await refreshExcludedSenders();
+      renderList();
+      showToast(`Re-enabled "${sender}". Click 🔍 Analyze on the row to process it.`);
+    }));
   // Click anywhere on a row's header opens the modal. Interactive children
   // (reprocess button, draft tabs, copy/inject, CTA done) stop propagation.
   list.querySelectorAll('.email .email-header').forEach(h => {
     const id = h.parentElement.dataset.id;
     h.addEventListener('click', () => openEmailModal(id));
   });
+  // Right-click anywhere on a row opens the context menu (Exclude sender, …).
+  list.querySelectorAll('.email').forEach(row => {
+    row.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      const id = row.dataset.id;
+      const item = state.items.find(i => String(i.id) === String(id));
+      if (!item) return;
+      openRowContextMenu(ev.clientX, ev.clientY, item);
+    });
+  });
   wireDraftHandlers(list);
   wireCtaHandlers(list);
   applySearchFilter();
+}
+
+// -------- Right-click row context menu --------------------------------
+// One global instance — repositioned per right-click. We rebuild the menu's
+// content each time so the "Exclude <sender>" label reflects the row that
+// was clicked. Closes on any outside click, Escape, or scroll.
+function openRowContextMenu(x, y, item) {
+  const menu = document.getElementById('row-context-menu');
+  if (!menu) return;
+  const sender = item.sender || '(unknown)';
+  menu.innerHTML = `
+    <div class="ctx-item-sub">From: <b>${escapeHtml(sender)}</b></div>
+    <div class="ctx-sep"></div>
+    <button type="button" class="ctx-item" data-act="exclude-sender">
+      🚫 Exclude sender from processing
+    </button>
+    <div class="ctx-item-sub">Future emails from this sender are hidden from the inbox and not analyzed.</div>
+  `;
+  menu.style.display = 'block';
+  // Position so menu stays inside viewport.
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(x, window.innerWidth  - rect.width  - 8);
+  const top  = Math.min(y, window.innerHeight - rect.height - 8);
+  menu.style.left = left + 'px';
+  menu.style.top  = top  + 'px';
+  menu.setAttribute('aria-hidden', 'false');
+
+  menu.querySelector('[data-act="exclude-sender"]')?.addEventListener('click', async () => {
+    closeRowContextMenu();
+    await excludeSender(sender);
+  }, { once: true });
+
+  // Outside-click / Escape / scroll dismiss. Use capture so child clicks
+  // (which propagate AFTER our menu's click handler) don't reopen things.
+  setTimeout(() => {
+    document.addEventListener('click',     closeRowContextMenu, { once: true, capture: true });
+    document.addEventListener('keydown',   ctxEscapeHandler,    { capture: true });
+    window.addEventListener('scroll',      closeRowContextMenu, { once: true, capture: true });
+    window.addEventListener('resize',      closeRowContextMenu, { once: true });
+  }, 0);
+}
+function closeRowContextMenu() {
+  const menu = document.getElementById('row-context-menu');
+  if (!menu) return;
+  menu.style.display = 'none';
+  menu.setAttribute('aria-hidden', 'true');
+  document.removeEventListener('keydown', ctxEscapeHandler, { capture: true });
+}
+function ctxEscapeHandler(ev) {
+  if (ev.key === 'Escape') closeRowContextMenu();
+}
+
+async function excludeSender(sender) {
+  if (!sender || sender === '(unknown)') return;
+  try {
+    const res = await fetch('/api/excluded-senders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sender }),
+    });
+    const j = await res.json().catch(() => ({}));
+    // Update the in-memory set so renderRow() switches matching rows to the
+    // "Skipped" placeholder immediately. We also drop any cached enrichment
+    // (the backend evicted server-side; mirror it here so the UI doesn't
+    // briefly flash a stale summary).
+    const norm = String(sender).trim().toLowerCase();
+    state.excludedSenders.add(norm);
+    for (const it of state.items) {
+      if ((it.sender || '').trim().toLowerCase() === norm) {
+        delete state.enriched[it.id];
+        delete state.streaming[it.id];
+      }
+    }
+    renderList();
+    const evictedNote = (j && typeof j.evicted === 'number' && j.evicted > 0)
+      ? ` · cancelled ${j.evicted} in-flight analysis`
+      : '';
+    showToast(j.added
+      ? `Excluded "${sender}"${evictedNote} — manage from Settings`
+      : `"${sender}" was already in the excluded list`);
+  } catch (e) {
+    showToast(`Couldn't exclude sender: ${e.message || e}`);
+  }
+}
+
+function showToast(msg) {
+  // Lightweight ephemeral toast. If the page has its own toast system later,
+  // swap this out — for now a plain alert-via-DOM keeps zero new dependencies.
+  let t = document.getElementById('global-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'global-toast';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);'
+      + 'background:var(--bg-card,#222);color:var(--text-primary,#eee);'
+      + 'padding:8px 14px;border-radius:6px;font-size:0.86rem;z-index:9100;'
+      + 'box-shadow:0 4px 16px rgba(0,0,0,.35);max-width:80vw;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { t.style.display = 'none'; }, 4000);
 }
 
 // -------- Digest view ----------------------------------------------
@@ -2777,20 +3165,351 @@ async function refreshInbox() {
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     state.items = await res.json();
-    const stillProcessing = state.items.filter(i => !state.enriched[i.id]).length;
+    // Listing is opt-in-process now: refresh does NOT auto-enrich. Show the
+    // raw count + range, and let updateProcessingMeta() take over the
+    // "analyzing" tally once the user clicks Process.
     meta.textContent = `${state.items.length} email${state.items.length === 1 ? '' : 's'} · ` +
                        `${rangeLabel} · ` +
-                       `loaded in ${Date.now() - t0} ms` +
-                       (stillProcessing ? ` · ${stillProcessing} analyzing…` : '');
-    setStatus(stillProcessing ? 'Analyzing…' : 'Ready', stillProcessing ? 'var(--color-warning)' : 'var(--color-success)');
+                       `loaded in ${Date.now() - t0} ms`;
+    setStatus('Ready', 'var(--color-success)');
     ensureSse();
+    updateProcessingMeta();
   } catch (e) {
     meta.textContent = 'Error: ' + e.message;
     setStatus('Error', 'var(--color-error)');
   } finally {
     btnRefresh.disabled = false;
+    // Sync the excluded list before drawing rows so excluded senders render
+    // as "Skipped" instead of "Queued" on the very first paint.
+    await refreshExcludedSenders().catch(() => {});
     renderList();
     renderBadgeBar();
+  }
+}
+
+// -------- Excluded senders: client cache + sync --------------------
+// state.excludedSenders is a Set of normalized sender strings (lowercase,
+// trimmed). Refreshed from /api/excluded-senders on inbox refresh and after
+// add/remove operations. Used by renderRow() to short-circuit the LLM-bound
+// states (queued / streaming / summary) and show the "Skipped" placeholder.
+async function refreshExcludedSenders() {
+  try {
+    const res = await fetch('/api/excluded-senders');
+    const j = await res.json();
+    const list = Array.isArray(j.senders) ? j.senders : [];
+    state.excludedSenders = new Set(list.map(s => String(s).trim().toLowerCase()));
+  } catch (e) {
+    // Silent — if the endpoint failed, fall back to "no exclusions" rather
+    // than blocking the inbox view. Next refresh will retry.
+  }
+}
+
+// Bucket an item by analysis state — used by the status filter pills AND
+// matched against renderRow's branches so they always agree on what a row
+// looks like. Order of checks matters: excluded wins over enriched (an
+// already-analyzed sender that the user excluded should still show as
+// excluded so the row visibly skips next time).
+function getRowStatus(item) {
+  const senderKey = (item.sender || '').trim().toLowerCase();
+  if (state.excludedSenders.has(senderKey)) return 'excluded';
+  const e = state.enriched[item.id];
+  if (e && e.failed) return 'failed';
+  if (e) return 'analyzed';
+  if (state.queued.has(String(item.id)) || state.streaming[item.id]) return 'analyzing';
+  return 'pending';
+}
+
+// Filter pill bar above the inbox. One pill per status bucket plus "All".
+// Counts are live: rebuilt from state on every renderList(). Clicking a
+// pill swaps the filter and re-renders without a server round-trip.
+function renderStatusFilterBar() {
+  const bar = document.getElementById('status-filter-bar');
+  if (!bar) return;
+  // Hide the filter bar in non-inbox views (digest/suggestions/debug have
+  // their own grouping logic).
+  if (state.view !== 'inbox' || !state.items || state.items.length === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+  const counts = { all: state.items.length, analyzing: 0, analyzed: 0, pending: 0, excluded: 0, failed: 0 };
+  for (const it of state.items) counts[getRowStatus(it)]++;
+  const pills = [
+    { key: 'all',       label: 'All',           icon: '📥' },
+    { key: 'analyzing', label: 'Analyzing',     icon: '⌛' },
+    { key: 'analyzed',  label: 'Analyzed',      icon: '✓'  },
+    { key: 'pending',   label: 'Not analyzed',  icon: '📩' },
+    { key: 'excluded',  label: 'Excluded',      icon: '🚫' },
+    { key: 'failed',    label: 'Failed',        icon: '⚠' },
+  ];
+  bar.innerHTML = pills.map(p => `
+    <button type="button" class="sf-pill ${state.statusFilter === p.key ? 'active' : ''}"
+            data-status="${p.key}"
+            ${counts[p.key] === 0 && p.key !== 'all' ? 'disabled style="opacity:0.4; cursor:default"' : ''}>
+      <span>${p.icon}</span>
+      <span>${p.label}</span>
+      <span class="sf-count">${counts[p.key]}</span>
+    </button>`).join('');
+  bar.style.display = 'flex';
+  bar.querySelectorAll('.sf-pill[data-status]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      state.statusFilter = btn.dataset.status;
+      renderList();
+    });
+  });
+}
+
+// Render the "Analyzing X · Show queue" segment in the toolbar meta. Driven
+// by state.queued (frontend's view) — verified against /api/processing on
+// demand via the "Show queue" link so the user can confirm "yes, exactly the
+// 32 I picked are running, not the whole inbox".
+function updateProcessingMeta() {
+  let analyzing = 0;
+  for (const it of state.items) {
+    const isQueued = state.queued.has(String(it.id));
+    const isStreaming = !!state.streaming[it.id];
+    if (state.enriched[it.id]) continue;
+    if (isQueued || isStreaming) analyzing++;
+  }
+  let processingNote = document.getElementById('processing-note');
+  if (!processingNote) {
+    processingNote = document.createElement('span');
+    processingNote.id = 'processing-note';
+    processingNote.style.cssText = 'margin-left:8px; font-size:0.78rem;';
+    meta.appendChild(processingNote);
+  }
+  if (analyzing === 0) {
+    processingNote.innerHTML = '';
+    return;
+  }
+  processingNote.innerHTML = `· <b style="color:var(--color-warning)">${analyzing} analyzing…</b> `
+    + `<a href="#" id="show-queue-link" style="color:var(--accent); text-decoration:underline">Show queue</a>`;
+  document.getElementById('show-queue-link')?.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    showProcessingQueue();
+  });
+}
+
+// Verify against the BACKEND what's actually in flight. Pops a small
+// list dialog so the user can audit "did I get what I picked?".
+async function showProcessingQueue() {
+  let backendIds = [];
+  let backendCount = 0;
+  try {
+    const r = await fetch('/api/processing');
+    const j = await r.json();
+    backendIds = Array.isArray(j.ids) ? j.ids : [];
+    backendCount = j.count || 0;
+  } catch (e) { /* leave defaults */ }
+  const rows = backendIds.map(id => {
+    const it = state.items.find(i => String(i.id) === String(id));
+    return it
+      ? `<li style="padding:4px 8px; border-bottom:1px solid var(--border-subtle); font-size:0.84rem">
+           <b>${escapeHtml(it.sender || '')}</b> — ${escapeHtml(it.subject || '(no subject)')}
+         </li>`
+      : `<li style="padding:4px 8px; color:var(--text-muted); font-size:0.82rem">id=${escapeHtml(id)} (not in current listing)</li>`;
+  }).join('');
+  const html = `
+    <div class="pm-card" style="width:min(560px,92vw); max-height:80vh; display:flex; flex-direction:column">
+      <div class="pm-head">
+        <h2 style="margin:0; font-size:1rem">In-flight queue</h2>
+        <span class="pm-meta" style="margin-left:auto">${backendCount} email${backendCount === 1 ? '' : 's'} · backend truth</span>
+      </div>
+      <div class="pm-body" style="overflow-y:auto; padding:0">
+        ${backendCount === 0
+          ? '<div style="padding:14px; color:var(--text-muted); font-size:0.86rem">Nothing in flight — the enricher is idle.</div>'
+          : `<ul style="list-style:none; margin:0; padding:0">${rows}</ul>`}
+      </div>
+      <div class="pm-foot" style="padding:12px 18px; border-top:1px solid var(--border-subtle)">
+        <button type="button" class="secondary" id="queue-close-btn">Close</button>
+      </div>
+    </div>`;
+  let host = document.getElementById('queue-overlay');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'queue-overlay';
+    host.style.cssText = 'position:fixed; inset:0; z-index:9300; display:flex;'
+      + 'align-items:center; justify-content:center; background:rgba(0,0,0,0.55)';
+    document.body.appendChild(host);
+    host.addEventListener('click', (ev) => { if (ev.target.id === 'queue-overlay') host.remove(); });
+  }
+  host.innerHTML = html;
+  document.getElementById('queue-close-btn')?.addEventListener('click', () => host.remove());
+}
+
+// "▶ Process all" now opens a picker so the user can confirm which senders
+// to spend tokens on, instead of blindly enqueuing every row. Always-excluded
+// senders are visible but pre-unchecked. Per-row 🔍 Analyze still bypasses
+// the picker for surgical single-email use.
+function processInbox() {
+  openProcessPicker();
+}
+
+// Build a sender→count map from the current inbox listing, then render
+// each unique sender as a checkbox row in the modal.
+function openProcessPicker() {
+  if (!state.items || state.items.length === 0) {
+    showToast('Nothing to process — refresh the inbox first.');
+    return;
+  }
+  const groups = groupItemsBySender(state.items);
+  const modal = document.getElementById('process-modal');
+  const body  = document.getElementById('process-modal-body');
+  const meta  = document.getElementById('process-modal-meta');
+  if (!modal || !body) return;
+
+  const rows = groups.map(g => {
+    const senderKey = g.key;
+    const isExcluded = state.excludedSenders.has(senderKey);
+    const allEnriched = g.items.every(it => !!state.enriched[it.id]);
+    // Default unchecked when the sender is on the permanent exclude list,
+    // OR when every email from this sender is already analyzed (no point
+    // re-paying). User can flip either back on with a click.
+    const checked = !isExcluded && !allEnriched;
+    return `
+      <label class="pm-row">
+        <input type="checkbox" class="pm-check" data-sender-key="${escapeHtml(senderKey)}"
+               ${checked ? 'checked' : ''}>
+        <span class="pm-sender" title="${escapeHtml(g.display)}">${escapeHtml(g.display)}</span>
+        <span class="pm-count">${g.items.length} email${g.items.length === 1 ? '' : 's'}${
+          isExcluded ? ' · permanently excluded'
+          : allEnriched ? ' · already analyzed' : ''
+        }</span>
+        <button type="button" class="secondary pm-exclude-btn"
+                data-sender-key="${escapeHtml(senderKey)}"
+                data-sender-display="${escapeHtml(g.display)}"
+                title="${isExcluded
+                  ? 'Already on the permanent excluded list — click to keep it that way'
+                  : 'Add this sender to the permanent excluded list (saved to disk)'
+                }">
+          ${isExcluded ? '🚫 excluded' : '🚫 Exclude'}
+        </button>
+      </label>`;
+  }).join('');
+  body.innerHTML = rows;
+  modal.classList.add('visible');
+  modal.setAttribute('aria-hidden', 'false');
+  updateProcessPickerMeta();
+
+  body.querySelectorAll('.pm-check').forEach(cb =>
+    cb.addEventListener('change', updateProcessPickerMeta));
+  body.querySelectorAll('.pm-exclude-btn').forEach(btn =>
+    btn.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      const display = btn.dataset.senderDisplay;
+      const key     = btn.dataset.senderKey;
+      try {
+        await fetch('/api/excluded-senders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sender: display }),
+        });
+      } catch (e) { /* swallow — refreshExcludedSenders below resyncs */ }
+      await refreshExcludedSenders();
+      // Uncheck this row's checkbox + relabel the button.
+      const cb = body.querySelector(`.pm-check[data-sender-key="${CSS.escape(key)}"]`);
+      if (cb) cb.checked = false;
+      btn.textContent = '🚫 excluded';
+      updateProcessPickerMeta();
+    }));
+}
+
+function groupItemsBySender(items) {
+  const map = new Map();
+  for (const it of items) {
+    const display = it.sender || '(unknown)';
+    const key = display.trim().toLowerCase();
+    if (!map.has(key)) map.set(key, { key, display, items: [] });
+    map.get(key).items.push(it);
+  }
+  // Sort by email count descending, then display name ascending — the
+  // noisiest senders bubble to the top where they're easiest to uncheck.
+  return Array.from(map.values()).sort((a, b) =>
+    b.items.length - a.items.length || a.display.localeCompare(b.display));
+}
+
+function updateProcessPickerMeta() {
+  const body = document.getElementById('process-modal-body');
+  const meta = document.getElementById('process-modal-meta');
+  if (!body || !meta) return;
+  let selectedSenders = 0, selectedEmails = 0, totalSenders = 0, totalEmails = 0;
+  body.querySelectorAll('.pm-check').forEach(cb => {
+    const key = cb.dataset.senderKey;
+    const items = state.items.filter(i => (i.sender || '').trim().toLowerCase() === key);
+    totalSenders++;
+    totalEmails += items.length;
+    if (cb.checked) {
+      selectedSenders++;
+      selectedEmails += items.filter(it => !state.enriched[it.id]).length;
+    }
+  });
+  meta.textContent = `${selectedSenders} of ${totalSenders} senders · `
+    + `${selectedEmails} email${selectedEmails === 1 ? '' : 's'} to analyze`;
+  // Disable the confirm button if nothing is selected.
+  const confirm = document.getElementById('process-modal-confirm');
+  if (confirm) confirm.disabled = selectedEmails === 0;
+}
+
+function closeProcessPicker() {
+  const modal = document.getElementById('process-modal');
+  if (!modal) return;
+  modal.classList.remove('visible');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+async function confirmProcessPicker() {
+  const body = document.getElementById('process-modal-body');
+  if (!body) return;
+  // Collect ids of every email under each checked sender (skipping ones
+  // that are already enriched — no point re-paying).
+  const targetIds = [];
+  body.querySelectorAll('.pm-check').forEach(cb => {
+    if (!cb.checked) return;
+    const key = cb.dataset.senderKey;
+    for (const it of state.items) {
+      if ((it.sender || '').trim().toLowerCase() !== key) continue;
+      if (state.enriched[it.id]) continue;
+      targetIds.push(String(it.id));
+    }
+  });
+  closeProcessPicker();
+  if (targetIds.length === 0) {
+    showToast('Nothing selected — no emails to analyze.');
+    return;
+  }
+  // Optimistic: mark all targets as queued so they flip to "⌛ Analyzing…"
+  // immediately. SSE handlers clear them as results arrive.
+  for (const id of targetIds) state.queued.add(id);
+  renderList();
+  updateProcessingMeta();
+  setStatus('Processing…', 'var(--color-warning)');
+  // Fire each /reprocess in parallel — backend serializes via the single
+  // enricher thread anyway, so this just queues them server-side.
+  let queued = 0, failed = 0;
+  await Promise.all(targetIds.map(id =>
+    fetch('/api/email/' + encodeURIComponent(id) + '/reprocess', { method: 'POST' })
+      .then(r => { if (r.ok) queued++; else failed++; })
+      .catch(() => { failed++; })
+  ));
+  ensureSse();
+  showToast(`Processing ${queued} email${queued === 1 ? '' : 's'}`
+    + (failed > 0 ? ` (${failed} failed to enqueue)` : ''));
+}
+
+// Per-row analyze trigger. Reuses /api/email/{id}/reprocess which works as
+// a first-time analyze when there's nothing cached (it just queues). Marks
+// the id as queued so the UI flips to a spinner immediately.
+async function analyzeOne(id) {
+  if (id == null) return;
+  state.queued.add(String(id));
+  renderList();
+  try {
+    await fetch('/api/email/' + encodeURIComponent(id) + '/reprocess', { method: 'POST' });
+    ensureSse();
+  } catch (e) {
+    state.queued.delete(String(id));
+    renderList();
+    showToast(`Couldn't start analysis: ${e.message || e}`);
   }
 }
 
@@ -2803,12 +3522,18 @@ async function reprocess(id) {
   // text so the row shows the spinner again, then a fresh stream when it arrives.
   delete state.enriched[id];
   delete state.streaming[id];
+  // Mark as user-requested so the row renders "⌛ Analyzing…" rather than
+  // reverting to the "📩 Not analyzed yet" CTA between server round-trip
+  // and the first SSE event.
+  state.queued.add(String(id));
   renderList();
   renderBadgeBar();
   try {
     const res = await fetch(`/api/email/${encodeURIComponent(id)}/reprocess`, { method: 'POST' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
   } catch (e) {
+    state.queued.delete(String(id));
+    renderList();
     console.warn('reprocess failed', e);
   }
 }
@@ -2826,6 +3551,9 @@ function ensureSse() {
       const data = JSON.parse(evt.data);
       const id = data.emailId;
       if (!id) return;
+      // Streaming has started for this id — clear the "queued" flag so the
+      // row's renderer prefers the streaming branch over the spinner one.
+      state.queued.delete(String(id));
       const wasStreaming = !!state.streaming[id];
       let s = state.streaming[id];
       if (!s) s = state.streaming[id] = { text: '' };
@@ -2854,6 +3582,10 @@ function ensureSse() {
       // Streaming for this id is done — drop the partial text so the next
       // re-render uses the final EnrichedEmail.
       delete state.streaming[id];
+      // Final result is in — clear the user-side "queued" marker too.
+      state.queued.delete(String(id));
+      // Live-update the toolbar's "X analyzing…" badge as each row lands.
+      try { updateProcessingMeta(); } catch (e) { /* meta not mounted yet */ }
       // Re-add the inbox row in case this was a replay after a hard refresh
       // (state.items would otherwise still be empty).
       const wasNewItem = !state.items.find(i => i.id === enriched.item?.id);
@@ -3275,6 +4007,16 @@ function renderSettings() {
           Adds a <b>Debug</b> tab next to Inbox / Digest / Suggestions showing the raw scraped data per email — exactly what the AI received before processing.
         </span>
       </div>
+      <div class="modal-meta" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:0">
+        <div style="font-size:0.78rem; font-weight:600; color:var(--text-secondary); display:inline-flex; align-items:center; gap:6px">
+          🚫 Excluded senders
+        </div>
+        <span style="font-size:0.78rem; color:var(--text-muted)">
+          Right-click any inbox row to add its sender here. Excluded senders are
+          hidden from the inbox and never sent to the AI.
+        </span>
+        <div id="settings-excluded-mount"></div>
+      </div>
     </div>
 
     <div id="settings-active-banner"></div>
@@ -3307,6 +4049,73 @@ function renderSettings() {
   renderSettingsActiveBanner();
   renderSettingsRail();
   renderSettingsPane(settingsState.selectedTab);
+  renderExcludedSendersInSettings();
+}
+
+// -------- Excluded senders pane (in Settings modal) --------------------
+async function renderExcludedSendersInSettings() {
+  const mount = settingsMount.querySelector('#settings-excluded-mount');
+  if (!mount) return;
+  // Initial skeleton so the user sees something even if the fetch is slow.
+  mount.innerHTML = '<div class="sender-empty">Loading…</div>';
+  let senders = [];
+  try {
+    const res = await fetch('/api/excluded-senders');
+    const j = await res.json();
+    senders = Array.isArray(j.senders) ? j.senders : [];
+  } catch (e) {
+    mount.innerHTML = `<div class="sender-empty">Couldn't load list: ${escapeHtml(String(e.message || e))}</div>`;
+    return;
+  }
+  const items = senders.length === 0
+    ? '<li class="sender-empty">No excluded senders yet — right-click an inbox row to add one.</li>'
+    : senders.map(s => `
+        <li>
+          <span class="sender-text">${escapeHtml(s)}</span>
+          <button type="button" class="secondary" data-act="rm-excluded" data-sender="${escapeHtml(s)}"
+                  title="Remove from excluded list (this sender will be processed again on next refresh)">
+            Remove
+          </button>
+        </li>`).join('');
+  mount.innerHTML = `
+    <ul class="excluded-senders-list">${items}</ul>
+    <div class="excluded-senders-row">
+      <input type="text" id="settings-excluded-input" placeholder="Add sender (paste from inbox)…"
+             autocomplete="off" autocorrect="off" autocapitalize="off">
+      <button type="button" class="secondary" id="settings-excluded-add-btn">Add</button>
+    </div>
+  `;
+  mount.querySelectorAll('[data-act="rm-excluded"]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const s = b.dataset.sender;
+      try {
+        await fetch('/api/excluded-senders/' + encodeURIComponent(s), { method: 'DELETE' });
+      } catch (e) { /* ignored — re-render will show the actual server state */ }
+      // Sync the in-memory cache so the inbox view re-renders the row
+      // out of "Skipped" without waiting for the next refresh.
+      await refreshExcludedSenders();
+      renderList();
+      renderExcludedSendersInSettings();
+    });
+  });
+  const input = mount.querySelector('#settings-excluded-input');
+  const submit = async () => {
+    const v = (input?.value || '').trim();
+    if (!v) return;
+    try {
+      await fetch('/api/excluded-senders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender: v }),
+      });
+    } catch (e) { /* ignored — re-render shows reality */ }
+    if (input) input.value = '';
+    await refreshExcludedSenders();
+    renderList();
+    renderExcludedSendersInSettings();
+  };
+  mount.querySelector('#settings-excluded-add-btn')?.addEventListener('click', submit);
+  input?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') submit(); });
 }
 
 function renderSettingsActiveBanner() {
@@ -4080,6 +4889,29 @@ function selectAdjacentRow(delta) {
 }
 
 btnRefresh.addEventListener('click', refreshInbox);
+document.getElementById('btn-process')?.addEventListener('click', processInbox);
+document.getElementById('process-modal-cancel')?.addEventListener('click', closeProcessPicker);
+document.getElementById('process-modal-confirm')?.addEventListener('click', confirmProcessPicker);
+document.getElementById('process-modal-all')?.addEventListener('click', () => {
+  document.querySelectorAll('#process-modal-body .pm-check').forEach(cb => { cb.checked = true; });
+  updateProcessPickerMeta();
+});
+document.getElementById('process-modal-none')?.addEventListener('click', () => {
+  document.querySelectorAll('#process-modal-body .pm-check').forEach(cb => { cb.checked = false; });
+  updateProcessPickerMeta();
+});
+// Click on the dim backdrop closes the picker — but not on clicks that
+// originated INSIDE the card (those bubble up so we filter by target).
+document.getElementById('process-modal')?.addEventListener('click', (ev) => {
+  if (ev.target.id === 'process-modal') closeProcessPicker();
+});
+// Escape closes the picker too.
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') {
+    const m = document.getElementById('process-modal');
+    if (m && m.classList.contains('visible')) closeProcessPicker();
+  }
+});
 
 // Date-range dropdown — persist the chosen scope and trigger a fresh fetch
 // (the backend navigates Gmail to the matching `newer_than:<range>` search).

@@ -3,6 +3,7 @@ package ai.intelliswarm.intellimailbox.pipeline;
 import ai.intelliswarm.intellimailbox.enrichment.EnrichedEmail;
 import ai.intelliswarm.intellimailbox.enrichment.EnrichmentService;
 import ai.intelliswarm.intellimailbox.gmail.EmailReader;
+import ai.intelliswarm.intellimailbox.settings.ExcludedSendersService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +56,7 @@ public class PreprocessingPipeline {
 
     private final EmailReader reader;
     private final EnrichmentService enrichment;
+    private final ExcludedSendersService excludedSenders;
 
     /** Reads email bodies from Chrome. Single thread because BrowserTool drives one Page. */
     private final ExecutorService readerExec = Executors.newSingleThreadExecutor(r -> {
@@ -97,9 +99,12 @@ public class PreprocessingPipeline {
 
     private record EnrichJob(InboxItem item, String body) {}
 
-    public PreprocessingPipeline(EmailReader reader, EnrichmentService enrichment) {
+    public PreprocessingPipeline(EmailReader reader,
+                                 EnrichmentService enrichment,
+                                 ExcludedSendersService excludedSenders) {
         this.reader = reader;
         this.enrichment = enrichment;
+        this.excludedSenders = excludedSenders;
         // Boot the enricher loop straight away — it sits on handoff.take() until
         // the reader produces work, so it's safe to start before any items arrive.
         enricherExec.submit(this::enricherLoop);
@@ -131,12 +136,32 @@ public class PreprocessingPipeline {
      * default inbox listing covers.
      */
     public List<InboxItem> refresh(String range) {
-        List<InboxItem> items = reader.listInbox(range);
+        // Listing only — does NOT enqueue enrichment. The user reviews the
+        // list (and optionally right-clicks senders to exclude) before
+        // explicitly opting in to processing via /api/inbox/process.
+        // Rationale: LLM tokens are a real cost; auto-processing every refresh
+        // burned tokens on rows the user wouldn't have asked to analyze.
+        return reader.listInbox(range);
+    }
+
+    /**
+     * Trigger enrichment for every item in {@code items} that isn't on the
+     * excluded-senders list and isn't already cached. Returns the count of
+     * rows actually enqueued (excludes already-cached and excluded ones).
+     * Called from the explicit "▶ Process inbox" path — never automatically
+     * by the listing endpoint.
+     */
+    public int processItems(List<InboxItem> items) {
+        int queued = 0, skipped = 0, alreadyCached = 0;
         for (InboxItem item : items) {
-            if (cache.containsKey(item.id())) continue;
+            if (excludedSenders.isExcluded(item.sender())) { skipped++; continue; }
+            if (cache.containsKey(item.id()))             { alreadyCached++; continue; }
             queueEnrichment(item);
+            queued++;
         }
-        return items;
+        logger.info("processItems: queued={} skippedExcluded={} alreadyCached={} (total {})",
+                queued, skipped, alreadyCached, items.size());
+        return queued;
     }
 
     /** Force re-enrichment of one row even if cached. */
@@ -147,6 +172,36 @@ public class PreprocessingPipeline {
 
     public java.util.Optional<EnrichedEmail> getCached(String id) {
         return java.util.Optional.ofNullable(cache.get(id));
+    }
+
+    /**
+     * Drops every cached enrichment + scraped body whose original sender
+     * matches the supplied (case-insensitive) string. Called after the user
+     * adds a sender to the "do not process" list so that:
+     *   - any in-flight enrichment's eventual result is discarded on land
+     *   - the row stops carrying a stale AI summary
+     *   - the next refresh skips re-enrichment (refresh() filter handles that)
+     * Does nothing if {@code sender} is null/blank.
+     */
+    public int evictBySender(String sender) {
+        if (sender == null) return 0;
+        String norm = sender.trim().toLowerCase();
+        if (norm.isEmpty()) return 0;
+        int removed = 0;
+        for (var entry : cache.entrySet()) {
+            EnrichedEmail e = entry.getValue();
+            if (e == null || e.item() == null) continue;
+            String s = e.item().sender();
+            if (s != null && s.trim().toLowerCase().equals(norm)) {
+                cache.remove(entry.getKey());
+                bodyCache.remove(entry.getKey());
+                removed++;
+            }
+        }
+        if (removed > 0) {
+            logger.info("Evicted {} cached entries for excluded sender '{}'", removed, sender);
+        }
+        return removed;
     }
 
     public java.util.Optional<String> getCachedBody(String id) {
@@ -165,6 +220,21 @@ public class PreprocessingPipeline {
      */
     public java.util.Set<String> bodyCacheIds() {
         return java.util.Set.copyOf(bodyCache.keySet());
+    }
+
+    /**
+     * Returns ids whose enrichment lease is currently held — i.e. the backend
+     * has them queued or actively in flight. Powers the UI's "see exactly what's
+     * being processed right now" verification line. Excludes ids whose lease
+     * was already released (those are either fully enriched or failed and
+     * surfaced via {@link #cache}).
+     */
+    public java.util.List<String> inFlightIds() {
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        for (var e : inFlight.entrySet()) {
+            if (e.getValue() != null && e.getValue().get()) out.add(e.getKey());
+        }
+        return out;
     }
 
     public void subscribe(Consumer<PipelineEvent> sink) { subscribers.add(sink); }
@@ -213,6 +283,15 @@ public class PreprocessingPipeline {
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 return;
+            }
+            // Belt-and-braces: re-check the excluded list at dequeue time. If
+            // the user clicked "Exclude sender" while this job sat in the
+            // single-slot handoff queue, drop it before paying any LLM cost.
+            if (excludedSenders.isExcluded(job.item.sender())) {
+                logger.info("Enricher: skipping id={} sender now on excluded list", job.item.id());
+                AtomicBoolean lease = inFlight.get(job.item.id());
+                if (lease != null) lease.set(false);
+                continue;
             }
             try {
                 enrichment.enrichStreaming(job.item, job.body)
