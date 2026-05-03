@@ -95,6 +95,14 @@ public class PreprocessingPipeline {
      *  when the reader's read step fails). */
     private final Map<String, AtomicBoolean> inFlight = new ConcurrentHashMap<>();
 
+    /** Most recent listing's items keyed by id. Populated on every refresh()
+     *  so /reprocess can find the InboxItem without re-scraping Gmail with a
+     *  potentially different range. Without this cache, /reprocess(range=7d)
+     *  would call refresh() with no range, scrape the unscoped inbox, and
+     *  fail to match the user's id format ("1:0", "1:1", …) — returning
+     *  queued=false silently. */
+    private final Map<String, InboxItem> lastListingById = new ConcurrentHashMap<>();
+
     private volatile boolean shuttingDown = false;
 
     private record EnrichJob(InboxItem item, String body) {}
@@ -141,7 +149,19 @@ public class PreprocessingPipeline {
         // explicitly opting in to processing via /api/inbox/process.
         // Rationale: LLM tokens are a real cost; auto-processing every refresh
         // burned tokens on rows the user wouldn't have asked to analyze.
-        return reader.listInbox(range);
+        List<InboxItem> items = reader.listInbox(range);
+        // Replace the lookup map so /reprocess can find items by id without
+        // re-scraping Gmail. Built from this listing exactly, so the ids in
+        // the map are guaranteed to match what the frontend just received.
+        lastListingById.clear();
+        for (InboxItem it : items) lastListingById.put(it.id(), it);
+        return items;
+    }
+
+    /** Look up an item from the most recent {@link #refresh(String)} result.
+     *  Empty after JVM start until the first refresh runs. */
+    public java.util.Optional<InboxItem> findInLastListing(String id) {
+        return java.util.Optional.ofNullable(lastListingById.get(id));
     }
 
     /**

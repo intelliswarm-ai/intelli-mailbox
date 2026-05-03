@@ -149,14 +149,22 @@ public class InboxController {
 
     @PostMapping("/email/{id}/reprocess")
     public ResponseEntity<Map<String, Object>> reprocess(@PathVariable("id") String id) {
-        // We only have the inbox-position id; refresh re-scrapes and finds the matching item.
-        for (InboxItem item : pipeline.refresh()) {
-            if (item.id().equals(id)) {
-                pipeline.reprocess(id, item);
-                return ResponseEntity.ok(Map.of("queued", true, "id", id));
-            }
+        // Look the id up against the most recent /api/inbox listing. The
+        // earlier implementation re-scraped Gmail per call (~4s, 5 pages),
+        // which serialized on Chrome's single tab — clicking Process on 29
+        // emails fired 29 parallel scrapes and starved the actual body-read
+        // pipeline. The cache makes this an O(1) lookup with the bonus of
+        // matching whatever range the user is on (the legacy refresh()
+        // ignored range, so ids generated under range=7d wouldn't match).
+        InboxItem item = pipeline.findInLastListing(id).orElse(null);
+        if (item == null) {
+            logger.info("/api/email/{}/reprocess → id not in last listing — refresh first", id);
+            return ResponseEntity.ok(Map.of(
+                    "queued", false, "id", id,
+                    "reason", "id not in current inbox listing — refresh first"));
         }
-        return ResponseEntity.ok(Map.of("queued", false, "id", id, "reason", "id not in current inbox"));
+        pipeline.reprocess(id, item);
+        return ResponseEntity.ok(Map.of("queued", true, "id", id));
     }
 
     /**

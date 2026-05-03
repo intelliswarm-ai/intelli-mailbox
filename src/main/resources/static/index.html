@@ -2558,6 +2558,15 @@ function renderDigest() {
     : '';
 
   // ---- Stats line ------------------------------------------------
+  // Same status buckets as the inbox filter pill bar so the two views can
+  // never disagree (the previous "200 still analyzing" was the count of
+  // everything-not-enriched, which under the new opt-in model includes
+  // pending and excluded rows that aren't actually being processed).
+  const buckets = { analyzing: 0, pending: 0, excluded: 0, failed: 0 };
+  for (const it of state.items) {
+    const s = getRowStatus(it);
+    if (s in buckets) buckets[s]++;
+  }
   const analyzed = enrichedItems.length;
   const phishingCount = enrichedItems.filter(x => x.enriched.phishingSuspected).length;
   const stats = `
@@ -2567,7 +2576,10 @@ function renderDigest() {
         <span><b>${analyzed}</b> analyzed</span>
         ${phishingCount > 0 ? `<span style="color:var(--color-error)"><b>${phishingCount}</b> phishing flagged</span>` : ''}
         ${allCtas.length > 0 ? `<span><b>${allCtas.length}</b> action items</span>` : ''}
-        ${state.items.length > analyzed ? `<span style="color:var(--text-muted)">${state.items.length - analyzed} still analyzing…</span>` : ''}
+        ${buckets.analyzing > 0 ? `<span style="color:var(--color-warning)"><b>${buckets.analyzing}</b> analyzing…</span>` : ''}
+        ${buckets.pending > 0 ? `<span style="color:var(--text-muted)"><b>${buckets.pending}</b> not analyzed</span>` : ''}
+        ${buckets.excluded > 0 ? `<span style="color:var(--text-muted)"><b>${buckets.excluded}</b> excluded</span>` : ''}
+        ${buckets.failed > 0 ? `<span style="color:var(--color-error)"><b>${buckets.failed}</b> failed</span>` : ''}
       </div>
     </div>`;
 
@@ -3432,22 +3444,29 @@ function updateProcessPickerMeta() {
   const body = document.getElementById('process-modal-body');
   const meta = document.getElementById('process-modal-meta');
   if (!body || !meta) return;
-  let selectedSenders = 0, selectedEmails = 0, totalSenders = 0, totalEmails = 0;
+  let selectedSenders = 0, totalSenders = 0;
+  let freshEmails = 0, reanalyzeEmails = 0;
   body.querySelectorAll('.pm-check').forEach(cb => {
     const key = cb.dataset.senderKey;
     const items = state.items.filter(i => (i.sender || '').trim().toLowerCase() === key);
     totalSenders++;
-    totalEmails += items.length;
     if (cb.checked) {
       selectedSenders++;
-      selectedEmails += items.filter(it => !state.enriched[it.id]).length;
+      for (const it of items) {
+        if (state.enriched[it.id]) reanalyzeEmails++; else freshEmails++;
+      }
     }
   });
+  const total = freshEmails + reanalyzeEmails;
+  const note = reanalyzeEmails > 0
+    ? ` (${reanalyzeEmails} will re-analyze)`
+    : '';
   meta.textContent = `${selectedSenders} of ${totalSenders} senders · `
-    + `${selectedEmails} email${selectedEmails === 1 ? '' : 's'} to analyze`;
-  // Disable the confirm button if nothing is selected.
+    + `${total} email${total === 1 ? '' : 's'}${note}`;
+  // Disable the confirm button only when nothing is selected at all.
+  // Re-analyses are a valid choice; we just warn in the meta.
   const confirm = document.getElementById('process-modal-confirm');
-  if (confirm) confirm.disabled = selectedEmails === 0;
+  if (confirm) confirm.disabled = total === 0;
 }
 
 function closeProcessPicker() {
@@ -3460,22 +3479,34 @@ function closeProcessPicker() {
 async function confirmProcessPicker() {
   const body = document.getElementById('process-modal-body');
   if (!body) return;
-  // Collect ids of every email under each checked sender (skipping ones
-  // that are already enriched — no point re-paying).
+  // Collect ids of every email under each CHECKED sender. We deliberately
+  // do NOT skip already-enriched ids here — if the user explicitly checks
+  // a sender whose emails were analyzed earlier, treat that as "I want them
+  // re-analyzed" (the /reprocess endpoint evicts and re-queues). Otherwise
+  // re-checking a sender silently does nothing, which is what was happening
+  // before this fix: "I checked 29 but nothing is processing".
   const targetIds = [];
+  let reprocessing = 0;
   body.querySelectorAll('.pm-check').forEach(cb => {
     if (!cb.checked) return;
     const key = cb.dataset.senderKey;
     for (const it of state.items) {
       if ((it.sender || '').trim().toLowerCase() !== key) continue;
-      if (state.enriched[it.id]) continue;
+      if (state.enriched[it.id]) reprocessing++;
       targetIds.push(String(it.id));
     }
   });
   closeProcessPicker();
   if (targetIds.length === 0) {
-    showToast('Nothing selected — no emails to analyze.');
+    showToast('Nothing selected — check at least one sender.');
     return;
+  }
+  // Drop the cached enrichment for any to-be-reprocessed ids so the rows
+  // visually flip back to "⌛ Analyzing…" instead of holding on the prior
+  // summary until the new one streams in.
+  for (const id of targetIds) {
+    delete state.enriched[id];
+    delete state.streaming[id];
   }
   // Optimistic: mark all targets as queued so they flip to "⌛ Analyzing…"
   // immediately. SSE handlers clear them as results arrive.
@@ -3492,8 +3523,11 @@ async function confirmProcessPicker() {
       .catch(() => { failed++; })
   ));
   ensureSse();
-  showToast(`Processing ${queued} email${queued === 1 ? '' : 's'}`
-    + (failed > 0 ? ` (${failed} failed to enqueue)` : ''));
+  const note = reprocessing > 0
+    ? ` (${reprocessing} re-analyzing — overrides earlier results)`
+    : '';
+  showToast(`Processing ${queued} email${queued === 1 ? '' : 's'}${note}`
+    + (failed > 0 ? ` · ${failed} failed to enqueue` : ''));
 }
 
 // Per-row analyze trigger. Reuses /api/email/{id}/reprocess which works as
