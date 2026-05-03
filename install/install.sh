@@ -20,7 +20,38 @@
 # =============================================================================
 set -euo pipefail
 
-VERSION="0.1.0"
+# Pinned fallback if GitHub's API is unreachable / rate-limited. Bumping
+# this number is OPTIONAL — the script's first move is to ask the GitHub
+# API for the latest release and use whatever's published. The fallback
+# only kicks in for offline-ish scenarios. Set IM_VERSION=x.y.z to skip
+# the API call entirely (useful for pinned CI installs).
+FALLBACK_VERSION="0.1.2"
+
+# Always-latest by default. Override priority:
+#   1. $IM_VERSION (env)        → strict pin, no network call
+#   2. GitHub releases/latest   → live lookup, what most users hit
+#   3. $FALLBACK_VERSION        → if GitHub is unreachable
+resolve_version() {
+    if [ -n "${IM_VERSION:-}" ]; then
+        printf "%s" "$IM_VERSION"; return
+    fi
+    local api_url='https://api.github.com/repos/intelliswarm-ai/intelli-mailbox/releases/latest'
+    local raw
+    raw="$(curl -fsSL --max-time 8 "$api_url" 2>/dev/null || true)"
+    # Avoid jq dependency — pull tag_name with grep+sed.
+    local tag
+    tag="$(printf "%s" "$raw" \
+        | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v?[^"]+"' \
+        | head -1 \
+        | sed -E 's/.*"v?//; s/"$//')"
+    if [ -n "$tag" ]; then
+        printf "%s" "$tag"
+    else
+        printf "%s" "$FALLBACK_VERSION"
+    fi
+}
+
+VERSION="$(resolve_version)"
 INSTALL_DIR="${INTELLIMAILBOX_DIR:-$HOME/.intelliswarm/intelli-mailbox}"
 MODEL="qwen2.5:3b"
 # Override IM_JAR_URL during local development to install from a private build.

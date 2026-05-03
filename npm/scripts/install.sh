@@ -20,11 +20,53 @@
 # =============================================================================
 set -euo pipefail
 
-VERSION="0.1.0"
+REPO="intelliswarm-ai/intelli-mailbox"
 INSTALL_DIR="${INTELLIMAILBOX_DIR:-$HOME/.intelliswarm/intelli-mailbox}"
 MODEL="qwen2.5:3b"
-# Override IM_JAR_URL during local development to install from a private build.
-JAR_URL="${IM_JAR_URL:-https://github.com/intelliswarm-ai/intelli-mailbox/releases/download/v${VERSION}/intelli-mailbox-${VERSION}.jar}"
+
+# Resolve the version + jar URL. Order of precedence:
+#   1. IM_JAR_URL  — full override (CI / local dev builds).
+#   2. IM_VERSION  — pin a specific tag (e.g. "0.1.2").
+#   3. GitHub API  — pick whatever's tagged "latest" right now.
+# Without an override the installer always tracks the latest published release,
+# so the script can be served from intelliswarm.ai/install.sh without ever
+# being edited per release.
+resolve_release() {
+    if [ -n "${IM_JAR_URL:-}" ]; then
+        JAR_URL="$IM_JAR_URL"
+        # Best-effort version sniff from the URL so the banner says something useful.
+        VERSION="$(printf '%s' "$IM_JAR_URL" | sed -nE 's/.*intelli-mailbox-([0-9][0-9A-Za-z.\-]*)\.jar.*/\1/p')"
+        [ -z "$VERSION" ] && VERSION="custom"
+        return 0
+    fi
+    if [ -n "${IM_VERSION:-}" ]; then
+        VERSION="${IM_VERSION#v}"
+        JAR_URL="https://github.com/${REPO}/releases/download/v${VERSION}/intelli-mailbox-${VERSION}.jar"
+        return 0
+    fi
+    local api_json
+    api_json="$(curl -fsSL \
+        -H 'Accept: application/vnd.github+json' \
+        -H 'User-Agent: intelli-mailbox-installer' \
+        "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || true)"
+    if [ -z "$api_json" ]; then
+        fail "Couldn't reach the GitHub API to resolve the latest release."
+        echo "  Set IM_VERSION=0.1.2 (or similar) to pin a specific version and rerun." >&2
+        exit 1
+    fi
+    # Parse tag_name and the .jar asset URL with sed — avoids requiring jq.
+    VERSION="$(printf '%s' "$api_json" \
+        | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/p' \
+        | head -1)"
+    JAR_URL="$(printf '%s\n' "$api_json" \
+        | sed -nE 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"([^"]+\.jar)".*/\1/p' \
+        | head -1)"
+    if [ -z "$VERSION" ] || [ -z "$JAR_URL" ]; then
+        fail "GitHub API returned no .jar asset for the latest release."
+        echo "  Set IM_VERSION to pin an older tag, or check https://github.com/${REPO}/releases." >&2
+        exit 1
+    fi
+}
 
 # ---- ANSI helpers (skip colour if not a TTY) ------------------------------
 if [ -t 1 ]; then
@@ -132,6 +174,10 @@ install_ollama_if_missing() {
             ;;
     esac
 }
+
+# Resolve VERSION + JAR_URL now (after fail() is defined, before the banner
+# uses $VERSION). This is the single source of truth for which release we install.
+resolve_release
 
 printf "\n  ${MAGENTA}✦ IntelliMailbox${RESET}\n"
 printf "    ${DIM}AI-preprocessed inbox · local-by-default${RESET}\n"

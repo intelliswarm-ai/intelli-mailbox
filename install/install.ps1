@@ -19,7 +19,31 @@
 
 $ErrorActionPreference = 'Stop'
 
-$VERSION       = '0.1.0'
+# Pinned fallback if GitHub's API is unreachable / rate-limited. Bumping
+# this is OPTIONAL — the script's first move is to ask the GitHub API for
+# the latest release tag and use that. Set $env:IM_VERSION='x.y.z' to
+# bypass the API call (useful for pinned CI installs).
+$FALLBACK_VERSION = '0.1.2'
+
+# Always-latest by default. Resolution priority:
+#   1. $env:IM_VERSION         → strict pin, no network call
+#   2. GitHub releases/latest  → live lookup, what most users hit
+#   3. $FALLBACK_VERSION       → if GitHub is unreachable
+function Resolve-LatestVersion {
+    if ($env:IM_VERSION) { return $env:IM_VERSION }
+    try {
+        $r = Invoke-RestMethod -Uri 'https://api.github.com/repos/intelliswarm-ai/intelli-mailbox/releases/latest' `
+                               -TimeoutSec 8 -ErrorAction Stop
+        if ($r.tag_name) {
+            return ($r.tag_name -replace '^v','')
+        }
+    } catch {
+        # API offline / rate-limited / 404 — silently fall through.
+    }
+    return $FALLBACK_VERSION
+}
+
+$VERSION       = Resolve-LatestVersion
 $INSTALL_DIR   = Join-Path $env:LOCALAPPDATA 'IntelliSwarm\IntelliMailbox'
 $MODEL         = 'qwen2.5:3b'
 # GitHub Releases hosts the actual jar — `intelliswarm.ai` redirects via the

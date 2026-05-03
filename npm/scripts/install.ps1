@@ -19,15 +19,49 @@
 
 $ErrorActionPreference = 'Stop'
 
-$VERSION       = '0.1.0'
+$REPO          = 'intelliswarm-ai/intelli-mailbox'
 $INSTALL_DIR   = Join-Path $env:LOCALAPPDATA 'IntelliSwarm\IntelliMailbox'
 $MODEL         = 'qwen2.5:3b'
-# GitHub Releases hosts the actual jar — `intelliswarm.ai` redirects via the
-# website to keep URLs short / brand-aligned. Override IM_JAR_URL to install
-# from a local build during development.
-$JAR_URL = if ($env:IM_JAR_URL) { $env:IM_JAR_URL } else {
-    "https://github.com/intelliswarm-ai/intelli-mailbox/releases/download/v$VERSION/intelli-mailbox-$VERSION.jar"
+
+# Resolve the version + jar URL. Order of precedence:
+#   1. $env:IM_JAR_URL    — full override (used by CI / local dev builds).
+#   2. $env:IM_VERSION    — pin a specific tag (e.g. "0.1.2").
+#   3. GitHub API         — pick whatever's tagged "latest" right now.
+# Without an override the installer always tracks the latest published release,
+# so the script can be served from intelliswarm.ai/install.ps1 without ever
+# being edited per release.
+function Resolve-Release {
+    if ($env:IM_JAR_URL) {
+        # Best-effort version sniff from the URL so the banner still says something useful.
+        $v = if ($env:IM_JAR_URL -match 'intelli-mailbox-([0-9][0-9A-Za-z.\-]*)\.jar') { $matches[1] } else { 'custom' }
+        return @{ Version = $v; JarUrl = $env:IM_JAR_URL }
+    }
+    if ($env:IM_VERSION) {
+        $v = $env:IM_VERSION.TrimStart('v')
+        return @{
+            Version = $v
+            JarUrl  = "https://github.com/$REPO/releases/download/v$v/intelli-mailbox-$v.jar"
+        }
+    }
+    try {
+        $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/releases/latest" `
+            -Headers @{ 'User-Agent' = 'intelli-mailbox-installer'; 'Accept' = 'application/vnd.github+json' } `
+            -UseBasicParsing
+    } catch {
+        throw "Couldn't reach the GitHub API to resolve the latest release ($($_.Exception.Message)). Set `$env:IM_VERSION='0.1.2' (or similar) to pin a specific version and rerun."
+    }
+    $v = ($rel.tag_name -replace '^v', '')
+    # Pick the .jar asset directly so we don't break if the file naming changes.
+    $jar = $rel.assets | Where-Object { $_.name -like '*.jar' -and $_.name -notlike '*.sha256' } | Select-Object -First 1
+    if (-not $jar) {
+        throw "Latest release v$v has no .jar asset. Set `$env:IM_VERSION to pin an older tag, or check https://github.com/$REPO/releases."
+    }
+    return @{ Version = $v; JarUrl = $jar.browser_download_url }
 }
+
+$release = Resolve-Release
+$VERSION = $release.Version
+$JAR_URL = $release.JarUrl
 
 function Write-Step($msg)    { Write-Host "  → $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)      { Write-Host "  ✓ $msg" -ForegroundColor Green }
