@@ -154,6 +154,24 @@
     }
     .toolbar .meta { font-size: 0.8rem; color: var(--text-muted); margin-left: auto; }
 
+    /* Date-range scope picker — sits next to the Refresh button in the toolbar. */
+    .range-picker {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 8px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .range-picker:hover { border-color: var(--accent); }
+    .range-picker .range-label { font-size: 0.95rem; }
+    .range-picker select {
+      all: unset; cursor: pointer;
+      font-family: var(--font-sans); font-size: 0.85rem; font-weight: 500;
+      color: var(--text-primary);
+    }
+    .range-picker select:focus { color: var(--accent); }
+
     main { padding: 20px 24px; max-width: 1100px; margin: 0 auto; }
 
     /* ---- Badge filter bar -------------------------------------- */
@@ -1216,6 +1234,136 @@
     .cta { cursor: pointer; }
     .cta .cta-done-btn { cursor: pointer; }
 
+    /* ---- Welcome-screen diagnostics ---------------------------- */
+    .diagnostics-panel {
+      max-width: 640px;
+      margin: 32px auto 0;
+      padding: 14px 18px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      background: var(--bg-card);
+      box-shadow: var(--shadow-card);
+      text-align: left;
+    }
+    .diagnostics-loading {
+      text-align: center; color: var(--text-muted); padding: 18px;
+    }
+    .diagnostics-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px; gap: 12px; flex-wrap: wrap;
+    }
+    .diagnostics-title {
+      font-weight: 600; color: var(--text-heading); font-size: 0.98rem;
+    }
+    .diagnostics-summary {
+      font-size: 0.84rem; color: var(--text-muted);
+    }
+    .diagnostics-summary.all-ok {
+      color: var(--color-success); font-weight: 600;
+    }
+    .diagnostics-row {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      padding: 10px 4px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .diagnostics-row:first-child { border-top: none; }
+    .diagnostics-icon {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.85rem; font-weight: 700;
+      color: #fff; flex-shrink: 0;
+    }
+    .diagnostics-icon.ok   { background: var(--color-success); }
+    .diagnostics-icon.warn { background: var(--color-warning); color: #1a1a1a; }
+    .diagnostics-icon.fail { background: var(--color-error); }
+    .diagnostics-icon.checking { background: var(--text-muted); }
+    .diagnostics-row-body { min-width: 0; }
+    .diagnostics-label {
+      font-size: 0.92rem; color: var(--text-heading); font-weight: 500;
+    }
+    .diagnostics-message {
+      font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;
+      line-height: 1.45;
+    }
+    .diagnostics-hint {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-left: 3px solid var(--accent);
+      background: var(--bg-input);
+      border-radius: 0 6px 6px 0;
+      font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5;
+    }
+    .diagnostics-actions {
+      margin-top: 8px;
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    .diagnostics-actions button {
+      font-size: 0.82rem; padding: 5px 12px;
+    }
+    .diagnostics-actions code {
+      font-family: var(--font-mono); font-size: 0.78rem;
+      background: var(--bg-input); padding: 2px 8px; border-radius: 4px;
+      color: var(--text-heading);
+      border: 1px solid var(--border-subtle);
+    }
+    .diagnostics-progress {
+      margin-top: 8px;
+      height: 6px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .diagnostics-progress-bar {
+      height: 100%;
+      background: var(--gradient-brand);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .diagnostics-progress-text {
+      font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;
+      font-family: var(--font-mono);
+    }
+    .diagnostics-recheck {
+      display: inline-flex; align-items: center; gap: 4px;
+      cursor: pointer; user-select: none;
+      padding: 5px 10px; border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-subtle);
+      font-size: 0.82rem;
+    }
+    .diagnostics-recheck:hover { color: var(--accent); border-color: var(--accent); }
+    .diagnostics-cta {
+      margin-top: 14px; padding: 12px 16px;
+      background: var(--accent-dim);
+      border-radius: 8px;
+      text-align: center;
+    }
+    .diagnostics-cta button {
+      font-size: 0.95rem; padding: 9px 22px;
+    }
+    .diagnostics-countdown {
+      font-size: 0.92rem; color: var(--text-secondary);
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .diagnostics-countdown b { color: var(--text-heading); font-size: 1.1rem; }
+    .diagnostics-cancel {
+      all: unset; cursor: pointer;
+      padding: 4px 10px; border-radius: 6px;
+      font-size: 0.78rem; font-weight: 500;
+      color: var(--text-muted); border: 1px solid var(--border-subtle);
+    }
+    .diagnostics-cancel:hover { color: var(--accent); border-color: var(--accent); }
+    .diagnostics-help-link {
+      font-size: 0.82rem; color: var(--text-muted); text-decoration: none;
+      align-self: center;
+    }
+    .diagnostics-help-link:hover { color: var(--accent); }
+
     /* ---- Branding (Intelliswarm-AI attribution) ---------------- */
     .brand-block {
       display: flex; flex-direction: column; gap: 1px;
@@ -1238,18 +1386,6 @@
       font-weight: 500;
       opacity: 0.85;
     }
-
-    /* In the empty / welcome state — slightly bigger, still understated. */
-    .empty-poweredby {
-      margin-top: 36px !important;
-      font-size: 0.78rem !important;
-      color: var(--text-muted);
-      letter-spacing: 0.02em;
-    }
-    .empty-poweredby a {
-      color: var(--accent); text-decoration: none; font-weight: 600;
-    }
-    .empty-poweredby a:hover { color: var(--accent-2); }
 
     footer {
       padding: 24px; text-align: center; color: var(--text-muted);
@@ -1285,6 +1421,18 @@
 
   <div class="toolbar">
     <button id="btn-refresh">↻ Refresh inbox</button>
+    <label class="range-picker" title="How far back to fetch from Gmail">
+      <span class="range-label">📅</span>
+      <select id="range-select">
+        <option value="1d">Last 24 hours</option>
+        <option value="2d">Last 2 days</option>
+        <option value="3d">Last 3 days</option>
+        <option value="7d">Last week</option>
+        <option value="14d">Last 2 weeks</option>
+        <option value="30d">Last month</option>
+        <option value="all">Current view (no date filter)</option>
+      </select>
+    </label>
     <div class="view-toggle" role="group" aria-label="View">
       <button type="button" data-view-value="inbox" aria-pressed="true" title="Flat inbox view">≡ Inbox</button>
       <button type="button" data-view-value="digest" aria-pressed="false" title="Daily inbox digest, grouped by badge">▦ Digest</button>
@@ -1310,14 +1458,12 @@
         AI-preprocessed inbox on top of your real Gmail.<br>
         Analysis runs locally by default — emails never leave your laptop.
       </p>
-      <p style="margin-top:24px">
-        Sign in to Gmail in the Chrome window that opened, then click <b>↻ Refresh inbox</b>.
-      </p>
-      <p class="empty-poweredby">
-        Powered by the
-        <a href="https://intelliswarm.ai" target="_blank" rel="noopener">Intelliswarm AI</a>
-        agent framework.
-      </p>
+      <div id="diagnostics-panel" class="diagnostics-panel">
+        <div class="diagnostics-loading">
+          <div class="spinner" style="margin:0 auto 10px"></div>
+          Checking your system…
+        </div>
+      </div>
     </div>
     <div id="action-panel-mount"></div>
     <div id="list" class="email-list"></div>
@@ -1374,6 +1520,20 @@ const ALL_BADGES = ['MEETING','RISK','EXTERNAL','AUTOMATED','VIP','FOLLOW_UP','N
 const DIGEST_ORDER = ['RISK','VIP','FOLLOW_UP','MEETING','FINANCE','EXTERNAL','AUTOMATED','NEWSLETTER'];
 const FILTER_KEY = 'intellimailbox-filter';
 const VIEW_KEY = 'intellimailbox-view';
+const RANGE_KEY = 'intellimailbox-range';
+// Allowed Gmail newer_than: durations + the "all" sentinel meaning "no date filter".
+// Anything else falls back to the 1d default.
+const ALLOWED_RANGES = new Set(['1d', '2d', '3d', '7d', '14d', '30d', 'all']);
+// Human label for each range value — shown in the meta line and tooltips.
+const RANGE_LABELS = {
+  '1d':  'last 24 hours',
+  '2d':  'last 2 days',
+  '3d':  'last 3 days',
+  '7d':  'last week',
+  '14d': 'last 2 weeks',
+  '30d': 'last month',
+  'all': 'current view (no date filter)',
+};
 const state = {
   items: [],                    // InboxItem[]
   enriched: {},                 // id → EnrichedEmail
@@ -1394,6 +1554,13 @@ const state = {
   // Mirror of the server-side debugMode setting. Updated on /api/settings load
   // and on Save. When true, the Debug tab becomes visible.
   debugMode: false,
+  // Date-range scope for /api/inbox — see ALLOWED_RANGES. Default is '1d'
+  // (last 24 hours) which keeps the first-experience inbox queue sane on
+  // local Ollama hardware. Persisted across reloads.
+  range: (() => { try {
+    const v = localStorage.getItem(RANGE_KEY);
+    return ALLOWED_RANGES.has(v) ? v : '1d';
+  } catch (e) { return '1d'; } })(),
   // Per-section expanded row ids in digest view. Key is "${badge}:${id}" so the
   // same email expanded under MEETING and EXTERNAL is independent. Not persisted —
   // expansion state is a transient UI affordance.
@@ -2595,13 +2762,19 @@ function applyView() {
 async function refreshInbox() {
   setStatus('Loading inbox…', 'var(--color-warning)');
   btnRefresh.disabled = true;
+  const rangeLabel = RANGE_LABELS[state.range] || state.range;
   try {
     const t0 = Date.now();
-    const res = await fetch('/api/inbox');
+    // Pass the chosen range as `?range=…` — backend translates to a Gmail
+    // `newer_than:` search and navigates the SPA there. "all" means no
+    // date filter (legacy current-inbox behaviour).
+    const url = '/api/inbox?range=' + encodeURIComponent(state.range || '1d');
+    const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     state.items = await res.json();
     const stillProcessing = state.items.filter(i => !state.enriched[i.id]).length;
     meta.textContent = `${state.items.length} email${state.items.length === 1 ? '' : 's'} · ` +
+                       `${rangeLabel} · ` +
                        `loaded in ${Date.now() - t0} ms` +
                        (stillProcessing ? ` · ${stillProcessing} analyzing…` : '');
     setStatus(stillProcessing ? 'Analyzing…' : 'Ready', stillProcessing ? 'var(--color-warning)' : 'var(--color-success)');
@@ -2614,6 +2787,10 @@ async function refreshInbox() {
     renderList();
     renderBadgeBar();
   }
+}
+
+function persistRange() {
+  try { localStorage.setItem(RANGE_KEY, state.range); } catch (e) { /* ignore */ }
 }
 
 async function reprocess(id) {
@@ -3518,6 +3695,275 @@ function updateActiveLlmPill(active) {
 })();
 
 // ============================================================
+// Welcome-screen system diagnostics
+//
+// Plain-English checklist of "is everything ready to use?" — the AI engine
+// is running, the model is downloaded, Chrome is connected, Gmail is signed
+// in. Auto-polls every few seconds while there's at least one non-OK row,
+// stops when all green. Auto-fix buttons trigger /api/diagnostics/fix/<id>
+// (or the SSE pull-model stream) so non-technical users don't have to use
+// a terminal.
+// ============================================================
+const diagnosticsState = {
+  pollHandle: null,
+  pulling:    false,    // any SSE-streamed fix in progress (pull-model, install-ollama, …)
+  pullEvtSrc: null,
+  autoStartScheduled: false,
+  autoStartTimer:     null,
+};
+
+async function refreshDiagnostics({ once = false } = {}) {
+  const panel = document.querySelector('#diagnostics-panel');
+  if (!panel) return;
+  // If diagnostics aren't visible (e.g. inbox already loaded), stop polling.
+  const emptyVisible = empty.style.display !== 'none';
+  if (!emptyVisible) { stopDiagnosticsPolling(); return; }
+
+  let data;
+  try {
+    const res = await fetch('/api/diagnostics');
+    data = await res.json();
+  } catch (e) {
+    panel.innerHTML = `<div class="diagnostics-loading">
+      Couldn't run diagnostics: ${escapeHtml(String(e))}
+    </div>`;
+    return;
+  }
+  renderDiagnostics(panel, data);
+
+  if (!once && emptyVisible) {
+    if (diagnosticsState.pollHandle) clearTimeout(diagnosticsState.pollHandle);
+    // Keep polling while anything's not OK — in-progress pulls and Gmail
+    // sign-in are the most common transient states.
+    if (!data.ready) {
+      diagnosticsState.pollHandle = setTimeout(() => refreshDiagnostics(), 4_000);
+    }
+  }
+}
+
+function stopDiagnosticsPolling() {
+  if (diagnosticsState.pollHandle) {
+    clearTimeout(diagnosticsState.pollHandle);
+    diagnosticsState.pollHandle = null;
+  }
+}
+
+function renderDiagnostics(panel, data) {
+  const checks = data.checks || [];
+  const counts = data.counts || {};
+  const ready  = !!data.ready;
+  const summary = ready
+      ? `✓ All ${counts.total} checks passed — you're ready to go.`
+      : `${counts.ok || 0} of ${counts.total || checks.length} ready — finish the steps below to start.`;
+
+  const rows = checks.map(renderDiagnosticsRow).join('');
+  const cta = ready
+      ? `<div class="diagnostics-cta">
+          <div class="diagnostics-countdown" id="diag-countdown">
+            Starting your inbox in <b id="diag-countdown-n">3</b>…
+            <button type="button" class="diagnostics-cancel" id="diag-cancel-auto">Cancel</button>
+          </div>
+          <button id="diag-go-btn" style="margin-top:10px">↻ Start now</button>
+        </div>`
+      : '';
+
+  panel.innerHTML = `
+    <div class="diagnostics-header">
+      <div class="diagnostics-title">System check</div>
+      <div class="diagnostics-summary ${ready ? 'all-ok' : ''}">${escapeHtml(summary)}</div>
+      <button type="button" class="diagnostics-recheck" id="diag-recheck-btn">↻ Re-check</button>
+    </div>
+    ${rows}
+    ${cta}
+  `;
+
+  panel.querySelector('#diag-recheck-btn')?.addEventListener('click', () => refreshDiagnostics({ once: true }));
+  panel.querySelector('#diag-go-btn')?.addEventListener('click', () => {
+    cancelAutoStart();
+    refreshInbox();
+  });
+  panel.querySelector('#diag-cancel-auto')?.addEventListener('click', cancelAutoStart);
+  // Wire auto-fix buttons by their data-action attribute.
+  panel.querySelectorAll('[data-diag-action]').forEach(btn => {
+    btn.addEventListener('click', () => runDiagnosticsAction(btn.dataset.diagAction, btn));
+  });
+
+  // Auto-start: when all checks pass and the user hasn't already kicked off
+  // a refresh, count down 3 seconds then trigger refreshInbox(). Cancellable.
+  if (ready && !diagnosticsState.autoStartScheduled && empty.style.display !== 'none') {
+    scheduleAutoStart();
+  }
+}
+
+function scheduleAutoStart() {
+  diagnosticsState.autoStartScheduled = true;
+  let n = 3;
+  const tickEl = () => document.querySelector('#diag-countdown-n');
+  diagnosticsState.autoStartTimer = setInterval(() => {
+    n -= 1;
+    const el = tickEl();
+    if (el) el.textContent = String(n);
+    if (n <= 0) {
+      cancelAutoStart();
+      refreshInbox();
+    }
+  }, 1000);
+}
+
+function cancelAutoStart() {
+  diagnosticsState.autoStartScheduled = false;
+  if (diagnosticsState.autoStartTimer) {
+    clearInterval(diagnosticsState.autoStartTimer);
+    diagnosticsState.autoStartTimer = null;
+  }
+  const cd = document.querySelector('#diag-countdown');
+  if (cd) cd.style.display = 'none';
+}
+
+function renderDiagnosticsRow(c) {
+  const icon = c.status === 'ok'   ? '✓'
+             : c.status === 'warn' ? '!'
+             : c.status === 'fail' ? '✕' : '·';
+  const hintHtml = (c.status !== 'ok' && c.hint)
+      ? `<div class="diagnostics-hint">${escapeHtml(c.hint)}</div>` : '';
+  let actionsHtml = '';
+  if (c.status !== 'ok') {
+    const buttons = [];
+    if (c.canAutoFix && c.autoFixAction) {
+      const label = autoFixButtonLabel(c.autoFixAction);
+      buttons.push(`<button type="button" data-diag-action="${escapeHtml(c.autoFixAction)}">${label}</button>`);
+    }
+    if (c.helpUrl) {
+      buttons.push(`<a href="${escapeHtml(c.helpUrl)}" target="_blank" rel="noopener" class="diagnostics-help-link">Or do it manually →</a>`);
+    }
+    if (c.fixCommand) {
+      buttons.push(`<code>${escapeHtml(c.fixCommand)}</code>`);
+    }
+    if (buttons.length) actionsHtml = `<div class="diagnostics-actions">${buttons.join('')}</div>`;
+  }
+  // Reserved progress mounts: each long-running auto-fix row gets its own.
+  // We key them by check id so multiple parallel installs don't collide.
+  const progressMount = (c.id === 'llm.model' || c.id === 'llm.reachable')
+      ? `<div class="diag-progress-mount" data-progress-for="${escapeHtml(c.id)}" style="display:none">
+          <div class="diagnostics-progress"><div class="diagnostics-progress-bar"></div></div>
+          <div class="diagnostics-progress-text"></div>
+         </div>` : '';
+  return `
+    <div class="diagnostics-row" data-check-id="${escapeHtml(c.id)}">
+      <span class="diagnostics-icon ${escapeHtml(c.status)}">${icon}</span>
+      <div class="diagnostics-row-body">
+        <div class="diagnostics-label">${escapeHtml(c.label)}</div>
+        <div class="diagnostics-message">${escapeHtml(c.message)}</div>
+        ${hintHtml}
+        ${actionsHtml}
+        ${progressMount}
+      </div>
+    </div>`;
+}
+
+function autoFixButtonLabel(action) {
+  switch (action) {
+    case 'pull-model':           return '↓ Download AI model now';
+    case 'install-ollama':       return '↓ Install Ollama for me';
+    case 'open-gmail':           return '↗ Open Gmail in Chrome';
+    case 'open-ollama-download': return '↗ Open Ollama download page';
+    default:                     return '🛠 Fix automatically';
+  }
+}
+
+async function runDiagnosticsAction(action, btn) {
+  // Streamed (SSE) actions — long-running, want progress bars.
+  if (action === 'pull-model')     return startStream(btn, 'pull-model',     'llm.model',     '↓ Downloading model…');
+  if (action === 'install-ollama') return startStream(btn, 'install-ollama', 'llm.reachable', '↓ Installing Ollama…');
+  // One-shot fixes — POST and refresh.
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch('/api/diagnostics/fix/' + encodeURIComponent(action), { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = '✓ ' + (data.message || 'Done');
+      // Some fixes return a URL the OS browser couldn't auto-open — show it.
+      if (data.url) {
+        const link = document.createElement('a');
+        link.href = data.url; link.target = '_blank'; link.rel = 'noopener';
+        link.textContent = data.url; link.style.marginLeft = '8px';
+        btn.parentElement?.appendChild(link);
+      }
+    } else {
+      btn.textContent = '✗ ' + (data.reason || 'Failed');
+    }
+  } catch (e) {
+    btn.textContent = '✗ ' + e.message;
+  } finally {
+    setTimeout(() => { btn.disabled = false; btn.textContent = original; refreshDiagnostics({ once: true }); }, 2400);
+  }
+}
+
+/**
+ * Generic SSE-progress helper for long-running fixes (pull-model,
+ * install-ollama). Wires the right progress mount, streams the backend's
+ * `progress` events into a percent bar + status text line, then re-runs the
+ * full diagnostics on completion so the row flips green automatically.
+ */
+function startStream(btn, action, checkId, busyLabel) {
+  if (diagnosticsState.pulling) return;
+  diagnosticsState.pulling = true;
+  const card = document.querySelector('#diagnostics-panel');
+  const progress = card?.querySelector(`.diag-progress-mount[data-progress-for="${checkId}"]`);
+  const bar  = progress?.querySelector('.diagnostics-progress-bar');
+  const text = progress?.querySelector('.diagnostics-progress-text');
+  if (progress) progress.style.display = '';
+  if (bar)      bar.style.width = '0%';
+  btn.disabled = true; btn.textContent = busyLabel;
+
+  // Stop the regular polling — the SSE stream drives UI updates.
+  stopDiagnosticsPolling();
+
+  const src = new EventSource('/api/diagnostics/fix/' + action);
+  diagnosticsState.pullEvtSrc = src;
+  src.addEventListener('progress', (evt) => {
+    try {
+      const data = JSON.parse(evt.data);
+      if (text) text.textContent = data.message || '';
+      if (bar && typeof data.percent === 'number') {
+        bar.style.width = Math.max(0, Math.min(100, data.percent)) + '%';
+      }
+      if (data.phase === 'done') {
+        if (bar) bar.style.width = '100%';
+        if (text) text.textContent = '✓ ' + (data.message || 'Done');
+        finishStream(btn, true);
+      } else if (data.phase === 'error') {
+        if (text) text.textContent = '✗ ' + (data.message || 'Failed');
+        finishStream(btn, false);
+      }
+    } catch (e) { /* ignore parse errors */ }
+  });
+  src.onerror = () => finishStream(btn, false);
+}
+
+function finishStream(btn, ok) {
+  if (diagnosticsState.pullEvtSrc) {
+    try { diagnosticsState.pullEvtSrc.close(); } catch (e) {}
+    diagnosticsState.pullEvtSrc = null;
+  }
+  diagnosticsState.pulling = false;
+  btn.disabled = false;
+  btn.textContent = ok ? '✓ Done' : '↻ Try again';
+  // Re-run the full check so the row flips to OK and the next step surfaces.
+  setTimeout(() => refreshDiagnostics({ once: false }), 1200);
+}
+
+// Kick off diagnostics when the welcome screen is visible (i.e. nothing's
+// loaded yet). If the user has data already, the panel stays hidden inside
+// the empty container and we don't poll.
+(function bootDiagnostics() {
+  if (empty && empty.style.display !== 'none') {
+    refreshDiagnostics();
+  }
+})();
+
+// ============================================================
 // Keyboard shortcuts (window-level)
 // ============================================================
 window.addEventListener('keydown', (ev) => {
@@ -3572,6 +4018,21 @@ function selectAdjacentRow(delta) {
 }
 
 btnRefresh.addEventListener('click', refreshInbox);
+
+// Date-range dropdown — persist the chosen scope and trigger a fresh fetch
+// (the backend navigates Gmail to the matching `newer_than:<range>` search).
+(() => {
+  const sel = document.querySelector('#range-select');
+  if (!sel) return;
+  // Hydrate the <select> from persisted state on load.
+  if (state.range && ALLOWED_RANGES.has(state.range)) sel.value = state.range;
+  sel.addEventListener('change', () => {
+    const v = sel.value;
+    state.range = ALLOWED_RANGES.has(v) ? v : '1d';
+    persistRange();
+    refreshInbox();
+  });
+})();
 
 // View toggle: Inbox / Digest / Suggestions. The data is shared, so switching
 // modes is just a re-render. Persisted in localStorage like the theme.

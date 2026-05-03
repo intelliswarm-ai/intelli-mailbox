@@ -119,7 +119,19 @@ public class PreprocessingPipeline {
      * the LLM (one at a time).
      */
     public List<InboxItem> refresh() {
-        List<InboxItem> items = reader.listInbox();
+        return refresh(null);
+    }
+
+    /**
+     * Date-range-scoped refresh. {@code range} is a Gmail
+     * {@code newer_than:} duration (e.g. {@code "1d"}, {@code "7d"},
+     * {@code "30d"}). When non-blank, the reader navigates Gmail's SPA to
+     * the corresponding search ({@code in:inbox newer_than:<range>}) and
+     * scrapes its results — letting the user pull older emails than the
+     * default inbox listing covers.
+     */
+    public List<InboxItem> refresh(String range) {
+        List<InboxItem> items = reader.listInbox(range);
         for (InboxItem item : items) {
             if (cache.containsKey(item.id())) continue;
             queueEnrichment(item);

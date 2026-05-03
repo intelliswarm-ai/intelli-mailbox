@@ -49,11 +49,20 @@ public class InboxController {
     }
 
     @GetMapping("/inbox")
-    public List<InboxItem> inbox() {
+    public List<InboxItem> inbox(
+            @org.springframework.web.bind.annotation.RequestParam(value = "range", required = false) String range) {
         long t0 = System.currentTimeMillis();
-        List<InboxItem> items = pipeline.refresh();
-        logger.info("/api/inbox → {} items in {}ms (enrichment queued in background)",
-                items.size(), System.currentTimeMillis() - t0);
+        // Default the unset case to "1d" — the user-facing default the
+        // dropdown ships with. Gmail's `newer_than:1d` returns inbox
+        // emails from the last 24 hours, which is the most useful first
+        // experience without a giant initial enrichment queue.
+        String effectiveRange = (range == null || range.isBlank()) ? "1d" : range.trim().toLowerCase();
+        // Sentinel "all" lets the caller explicitly ask for the current
+        // unscoped inbox listing (the legacy behaviour).
+        String passToReader = "all".equals(effectiveRange) ? null : effectiveRange;
+        List<InboxItem> items = pipeline.refresh(passToReader);
+        logger.info("/api/inbox(range={}) → {} items in {}ms (enrichment queued in background)",
+                effectiveRange, items.size(), System.currentTimeMillis() - t0);
         return items;
     }
 

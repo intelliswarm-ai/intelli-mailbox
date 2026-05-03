@@ -27,12 +27,24 @@ public class EmailReader {
 
     private final BrowserTool browser;
     private final int maxEmails;
+    private final int maxEmailsRanged;
+
+    /**
+     * The most recent range query passed to {@link #listInbox(String)}. Used
+     * by {@link #readEmail(String)} when the email's id encodes a search
+     * page (format {@code "<page>:<idx>"}) — we re-navigate to that exact
+     * search/page in Gmail before clicking the row.
+     */
+    private volatile String lastRangeQuery = null;
 
     public EmailReader(BrowserTool browser,
                        @org.springframework.beans.factory.annotation.Value(
-                               "${intellimailbox.preprocessing.max-emails:25}") int maxEmails) {
+                               "${intellimailbox.preprocessing.max-emails:25}") int maxEmails,
+                       @org.springframework.beans.factory.annotation.Value(
+                               "${intellimailbox.preprocessing.max-emails-ranged:200}") int maxEmailsRanged) {
         this.browser = browser;
         this.maxEmails = maxEmails;
+        this.maxEmailsRanged = maxEmailsRanged;
     }
 
     /**
@@ -49,21 +61,69 @@ public class EmailReader {
      * listing — that re-routes the SPA without a full reload.
      */
     public synchronized List<InboxItem> listInbox() {
-        ensureOnInboxListing(30_000);
-        // ensureOnInboxListing only no-ops when the listing is already in the
-        // DOM — it does NOT tell Gmail to fetch fresh state from the server.
-        // Without this extra step, "Refresh inbox" would just re-scrape the
-        // same DOM Gmail had at page load and would never see emails that
-        // arrived since (e.g. one the user just sent to themselves). Click
-        // Gmail's own Refresh button to force a real re-fetch.
-        forceGmailRefetch();
+        return listInbox(null);
+    }
 
-        // CRITICAL: each row reports its raw DOM index (its position among ALL
-        // [role="row"] nodes, header included). The Java side uses that DOM
-        // index as the InboxItem id. {@link #readEmail(String)} then clicks
-        // rows[id] directly — no listing-vs-DOM offset drift, which previously
-        // caused row N to scrape the body of row N+k whenever any earlier row
-        // had no sender/subject and got filtered out.
+    /**
+     * Date-range scoped listing. Pass a Gmail {@code newer_than:} duration
+     * like {@code "1d"}, {@code "2d"}, {@code "7d"}, {@code "14d"},
+     * {@code "30d"} to fetch every inbox email within that window — the
+     * reader navigates Gmail's SPA to the corresponding search URL
+     * ({@code in:inbox newer_than:<range>}) so we get older emails the
+     * default inbox listing would have scrolled off.
+     *
+     * <p>{@code null} or empty range falls back to the default behaviour
+     * (current inbox listing, refreshed via Gmail's own Refresh button).
+     *
+     * <p>Result is still capped at {@link #maxEmails} per the
+     * {@code intellimailbox.preprocessing.max-emails} property — bump it
+     * if you want bigger windows.
+     */
+    public synchronized List<InboxItem> listInbox(String range) {
+        boolean ranged = range != null && !range.isBlank() && range.matches("\\d+[dwm]");
+        if (!ranged) {
+            ensureOnInboxListing(30_000);
+            // ensureOnInboxListing only no-ops when the listing is already in the
+            // DOM — it does NOT tell Gmail to fetch fresh state from the server.
+            // Without this extra step, "Refresh inbox" would just re-scrape the
+            // same DOM Gmail had at page load and would never see emails that
+            // arrived since (e.g. one the user just sent to themselves). Click
+            // Gmail's own Refresh button to force a real re-fetch.
+            forceGmailRefetch();
+            this.lastRangeQuery = null;
+            return scrapeRowsOnPage(1, maxEmails);
+        }
+
+        // Ranged query — paginate Gmail's search results until we hit the cap
+        // or run out of pages. Each emitted InboxItem.id encodes the page it
+        // came from ("<page>:<domIdx>") so readEmail can navigate back to the
+        // exact page before clicking the row.
+        String r = range.trim().toLowerCase();
+        this.lastRangeQuery = r;
+        navigateToRangeSearch(r, 1);
+        java.util.List<InboxItem> all = new java.util.ArrayList<>();
+        int page = 1;
+        while (all.size() < maxEmailsRanged) {
+            int remaining = maxEmailsRanged - all.size();
+            java.util.List<InboxItem> pageItems = scrapeRowsOnPage(page, remaining);
+            if (pageItems.isEmpty()) break;
+            all.addAll(pageItems);
+            if (all.size() >= maxEmailsRanged) break;
+            // Try to advance to the next page; bail if Gmail has no more.
+            if (!navigateToRangeSearch(r, page + 1)) break;
+            page++;
+        }
+        logger.info("EmailReader: range={} → scraped {} emails across {} page(s)",
+                r, all.size(), page);
+        return all;
+    }
+
+    /**
+     * Scrape the currently-visible Gmail listing — search results or default
+     * inbox alike — and emit InboxItems with id format {@code "<page>:<domIdx>"}.
+     * Capped at {@code cap} rows so we don't overshoot the per-call budget.
+     */
+    private List<InboxItem> scrapeRowsOnPage(int page, int cap) {
         // Snippet cleanup: Gmail prepends a separator dash to its preview
         // ("- Hello, ..."). Strip leading dashes / em-dashes / en-dashes so
         // the snippet reads naturally and the LLM doesn't see leading garbage.
@@ -84,18 +144,15 @@ public class EmailReader {
                 "                    ?? r.querySelector('span.bog + span')?.innerText\n" +
                 "                    ?? '';\n" +
                 "    const snippet = cleanSnippet(snippetRaw);\n" +
-                "    // Gmail's relative time: try (1) compact column span (.xW span),\n" +
-                "    // (2) any <span title> with a digit in title (full date in tooltip),\n" +
-                "    // (3) td[title], (4) any element with class xY/xX (older Gmail).\n" +
                 "    const time    = r.querySelector('span.xW span')?.innerText\n" +
                 "                 ?? r.querySelector('span.xW')?.innerText\n" +
                 "                 ?? r.querySelector('span[title]:not([email])')?.getAttribute('title')\n" +
                 "                 ?? r.querySelector('td[title]')?.getAttribute('title')\n" +
                 "                 ?? r.querySelector('span.xY span')?.innerText\n" +
                 "                 ?? '';\n" +
-                "    if (sender || subject) out.push({domIndex: idx, sender, subject, snippet, time: (time || '').trim()});\n" +
+                "    if (sender || subject) out.push({domIndex: '" + page + ":' + idx, sender, subject, snippet, time: (time || '').trim()});\n" +
                 "  });\n" +
-                "  return JSON.stringify(out.slice(0, " + maxEmails + "));\n" +
+                "  return JSON.stringify(out.slice(0, " + cap + "));\n" +
                 "})()";
         Object raw = browser.execute(Map.of("operation", "evaluate_js", "code", js));
         return parseInboxItems(String.valueOf(raw));
@@ -107,13 +164,33 @@ public class EmailReader {
      * {@code listInbox} — exclusive Chrome-page access during the click + scrape.
      */
     public synchronized String readEmail(String id) {
+        // ID format is "<page>:<domIdx>" for new ranged listings, or a bare
+        // numeric DOM-index for the default inbox path (legacy).
+        int page = 1;
         int idx;
-        try { idx = Integer.parseInt(id); } catch (NumberFormatException e) { return ""; }
+        try {
+            int colon = id.indexOf(':');
+            if (colon > 0) {
+                page = Integer.parseInt(id.substring(0, colon));
+                idx  = Integer.parseInt(id.substring(colon + 1));
+            } else {
+                idx = Integer.parseInt(id);
+            }
+        } catch (NumberFormatException e) {
+            return "";
+        }
 
-        // Defensive: make sure we're on the inbox listing before clicking
-        // rows[idx]. Cheap when we already are (single probe call); recovers
-        // when a previous readEmail's hash-nav-back didn't render fast enough.
-        ensureOnInboxListing(15_000);
+        // For ranged listings, navigate back to the exact search/page so
+        // rows[idx] points at the same email we listed. For the default
+        // inbox path (page=1, no lastRangeQuery), use ensureOnInboxListing.
+        if (page > 1 || lastRangeQuery != null) {
+            navigateToRangeSearch(lastRangeQuery == null ? "1d" : lastRangeQuery, page);
+        } else {
+            // Defensive: make sure we're on the inbox listing before clicking
+            // rows[idx]. Cheap when we already are (single probe call); recovers
+            // when a previous readEmail's hash-nav-back didn't render fast enough.
+            ensureOnInboxListing(15_000);
+        }
 
         // CRITICAL — stale-DOM avoidance. Gmail's SPA caches previously-opened
         // conversation panels in the DOM (their {@code div.adn} stays after we
@@ -210,13 +287,19 @@ public class EmailReader {
         // toolbar text via overlays. Drop the well-known chrome lines.
         text = stripGmailChrome(text);
 
-        // Hash-only "navigate back" to the listing. Setting location.hash makes
-        // Gmail's SPA re-render the inbox without firing a full page reload, so
-        // we skip the 30s NETWORKIDLE wait that a hard navigate would incur.
-        // The next readEmail can find rows[idx] without another minute of Playwright
-        // sitting on its hands.
+        // Hash-only "navigate back" to the listing — back to the SAME page
+        // we read from when ranged (so the next readEmail's rows[idx] still
+        // resolves correctly), back to plain #inbox in the legacy default.
+        String backHash;
+        if (lastRangeQuery != null) {
+            String base = "#search/in%3Ainbox+newer_than%3A" + lastRangeQuery;
+            backHash = page <= 1 ? base : (base + "/p" + page);
+        } else {
+            backHash = "#inbox";
+        }
+        final String backHashFinal = backHash;
         browser.execute(Map.of("operation", "evaluate_js",
-                "code", "(() => { try { if (location.hash !== '#inbox') location.hash = '#inbox'; return true; } catch (e) { return false; } })()"));
+                "code", "(() => { try { if (location.hash !== '" + backHashFinal + "') location.hash = '" + backHashFinal + "'; return true; } catch (e) { return false; } })()"));
         try {
             browser.execute(Map.of("operation", "wait_for",
                     "selector", "[role=\"main\"] [role=\"row\"]",
@@ -288,6 +371,87 @@ public class EmailReader {
         } catch (Exception e) {
             logger.debug("forceGmailRefetch: rows didn't reappear in 8s — scraping anyway");
         }
+    }
+
+    /**
+     * Hash-route Gmail's SPA to a date-range search inside the inbox.
+     * Encodes the search query as {@code in:inbox newer_than:<range>} —
+     * Gmail's standard search syntax — and waits for the results table.
+     *
+     * <p>Uses hash-only navigation when we're already on Gmail (cheap —
+     * the SPA re-routes without a full page reload). Hard-navigates only
+     * when we have to. Critically, {@link #forceGmailRefetch()} is always
+     * called at the end so Gmail re-runs the search even when the hash
+     * hasn't changed since last call (otherwise we'd just rescrape the
+     * stale DOM rows from the previous request — that bug was visible in
+     * production logs as repeat range=7d calls finishing in 1–2 s with no
+     * actual refresh).
+     */
+    /**
+     * Hash-route Gmail to the {@code in:inbox newer_than:<range>} search,
+     * page {@code page} (1-indexed). Returns {@code true} if rows for that
+     * page rendered; {@code false} if Gmail has no more results (the row
+     * table is empty after navigation, signalling end-of-pagination).
+     *
+     * <p>Page 1 always forces a refresh (toggle hash + click Gmail's refresh)
+     * so repeat presses of the same range actually re-fetch. Pages 2+ skip
+     * the explicit refresh — Gmail handles per-page navigation natively.
+     */
+    private boolean navigateToRangeSearch(String range, int page) {
+        String baseHash = "#search/in%3Ainbox+newer_than%3A" + range;
+        String hash = page <= 1 ? baseHash : (baseHash + "/p" + page);
+
+        String hashChangeJs =
+                "(() => { try {"
+                + "  const target = '" + hash + "';"
+                + "  if (location.hostname.indexOf('mail.google.com') < 0) return 'navigate';"
+                + "  if (location.hash === target) {"
+                + "    location.hash = '#inbox';"
+                + "    location.hash = target;"
+                + "    return 'toggled';"
+                + "  }"
+                + "  location.hash = target;"
+                + "  return 'hashed';"
+                + "} catch (e) { return 'navigate'; } })()";
+        String mode;
+        try {
+            mode = String.valueOf(browser.execute(Map.of("operation", "evaluate_js", "code", hashChangeJs)));
+        } catch (Exception e) {
+            mode = "navigate";
+        }
+        if ("navigate".equals(mode)) {
+            try {
+                browser.execute(Map.of("operation", "navigate",
+                        "url", "https://mail.google.com/mail/u/0/" + hash,
+                        "timeout_ms", 10_000));
+            } catch (Exception e) {
+                logger.warn("EmailReader: hard-navigate to {} failed: {}", hash, e.getMessage());
+            }
+        }
+        try {
+            browser.execute(Map.of("operation", "wait_for",
+                    "selector", "[role=\"main\"] [role=\"row\"]",
+                    "timeout_ms", 10_000));
+        } catch (Exception e) {
+            // Likely end-of-pagination: empty results page → no rows ever appear.
+            logger.info("EmailReader: range={} page={} returned no rows (end of results)", range, page);
+            return false;
+        }
+        if (page <= 1) {
+            // Force Gmail to re-run the search on page 1 every time, so a
+            // repeat press of the same range still pulls fresh data.
+            forceGmailRefetch();
+        }
+        // Verify there's actually at least one DATA row beyond the header —
+        // a "no results" page still has the table shell + header.
+        String countJs = "(() => document.querySelectorAll('[role=\"main\"] [role=\"row\"]').length)()";
+        try {
+            Object n = browser.execute(Map.of("operation", "evaluate_js", "code", countJs));
+            int rows = Integer.parseInt(String.valueOf(n));
+            if (rows <= 1) return false;
+        } catch (Exception ignored) { /* continue */ }
+        logger.info("EmailReader: range={} page={} mode={} → {}", range, page, mode, hash);
+        return true;
     }
 
     private void ensureOnInboxListing(int waitMs) {
