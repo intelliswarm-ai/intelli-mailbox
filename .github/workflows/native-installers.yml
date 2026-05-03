@@ -427,4 +427,4 @@ jobs:
           # fails with "Validation Failed: already_exists" — common when a
           # release was first published with one filename and a later run
           # standardizes the artifact name (e.g. spaced -> hyphenated).
-          clobber: true
+          overwrite_files: true
