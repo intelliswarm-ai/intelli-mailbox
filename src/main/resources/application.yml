@@ -52,6 +52,21 @@ intellimailbox:
 # Override with `LOGGING_LEVEL_…` env vars when debugging a specific subsystem.
 # ============================================================================
 logging:
+  # File logging is on by default so end-users (running the MSI/DMG/DEB
+  # without a console attached) leave a trail we can ask them to send back.
+  # Path uses ${user.home} which Java sets correctly on every OS:
+  #   Windows: C:\Users\<name>\.intelli-mailbox\logs\
+  #   macOS:   /Users/<name>/.intelli-mailbox/logs/
+  #   Linux:   /home/<name>/.intelli-mailbox/logs/
+  # Override per-run with --logging.file.name=<path> if needed.
+  file:
+    name: ${user.home}/.intelli-mailbox/logs/intelli-mailbox.log
+  logback:
+    rollingpolicy:
+      # Keep things small enough to email back if a user hits a bug.
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 100MB
   pattern:
     # Drops the empty trace-id column (`[%X{traceId:-},%X{spanId:-}]`) that
     # Spring Boot's default pattern leaves blank when no tracer is configured.
