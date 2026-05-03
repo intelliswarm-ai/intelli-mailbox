@@ -124,6 +124,30 @@ jobs:
         shell: bash
         run: ls -la target/installers/
 
+      # jpackage names the MSI/DMG/DEB after pom.xml's <name> ("Intelli Mailbox"
+      # WITH A SPACE), which produces filenames like "Intelli Mailbox-0.1.0.msi".
+      # Rename to the hyphenated lowercase form so:
+      #   - Download URLs on intelliswarm.ai don't need %20 encoding
+      #   - The names match the standard pattern used by the .jar release
+      #   - SHA-256 sidecars can be computed against a stable filename
+      # This keeps the user-visible app name (Start Menu / Applications) as
+      # "Intelli Mailbox" — only the artifact filename changes.
+      - name: Standardize installer filenames
+        shell: bash
+        run: |
+          cd target/installers
+          shopt -s nullglob
+          for f in *.msi *.dmg *.deb; do
+              # Replace any "Intelli Mailbox" (case-insensitive) with the
+              # hyphenated lowercase form, then collapse remaining spaces.
+              new=$(echo "$f" | sed -E 's/[Ii]ntelli[ -][Mm]ailbox/intelli-mailbox/g; s/ /-/g')
+              if [ "$f" != "$new" ]; then
+                  echo "==> Renaming: $f  ->  $new"
+                  mv -- "$f" "$new"
+              fi
+          done
+          ls -la
+
       # =====================================================================
       # MSI smoke test (Windows only)
       #   - Silent-installs the freshly-built MSI on the runner
