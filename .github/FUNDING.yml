@@ -1,0 +1,19 @@
+# Renders the "Sponsor" button on the repo home page + every issue/PR.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+#
+# Both options below are FREE for the recipient:
+#   - GitHub Sponsors: GitHub currently covers all Stripe processor fees,
+#     so 100% of the donation lands in your bank account. Apply at
+#     https://github.com/sponsors  (1-2 week approval, Switzerland supported).
+#   - Liberapay: 0% platform fee, recurring-only. Sign up at
+#     https://liberapay.com — no approval needed, no company required.
+#
+# Replace the placeholder handles below once your accounts are live, then
+# uncomment the line. The Sponsor button only appears for non-empty entries.
+
+github: tmessini                   # GitHub Sponsors profile: github.com/sponsors/tmessini
+# liberapay: intelliswarm          # uncomment once you've claimed the handle
+
+# Optional: a self-hosted donation page once intelliswarm.ai/donate exists.
+# custom:
+#   - https://intelliswarm.ai/donate
