@@ -1,0 +1,19 @@
+# Code owners — every PR auto-requests a review from the owners listed below.
+# Combined with branch protection's "Require review from Code Owners", this
+# means nothing lands on main without an approving review from @tmessini.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+*                                  @tmessini
+
+# Anything that affects how releases are built, signed, or published — extra
+# eyeballs on these because a malicious change here could ship a tampered MSI.
+/.github/workflows/                @tmessini
+/.github/CODEOWNERS                @tmessini
+/.github/FUNDING.yml               @tmessini
+/installer/                        @tmessini
+/pom.xml                           @tmessini
+
+# Legal documents — never edit without explicit review
+/LICENSE                           @tmessini
+/TERMS-OF-USE.md                   @tmessini

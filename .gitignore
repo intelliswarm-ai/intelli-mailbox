@@ -31,3 +31,8 @@ output/
 # public repo. Anything under docs/internal/ stays on the maintainer's
 # machine.
 docs/internal/
+
+# Claude Code: personal-machine permissions overlay. The shared
+# .claude/settings.json (if any) IS committed; *.local.json is per-user.
+.claude/*.local.json
+.claude/.session/
