@@ -416,15 +416,37 @@ jobs:
               echo "See the workflow file header for setup instructions." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # softprops/action-gh-release@v2's `overwrite_files` flag is honored on
+      # the happy path but its internal "race condition retry" branch ignores
+      # it and re-fails with `already_exists`. Pre-deleting any matching
+      # asset with `gh` makes the subsequent upload idempotent regardless of
+      # the action's quirks. `gh` is preinstalled on all GitHub runners.
+      - name: Pre-clean any existing release assets we're about to upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -u
+          shopt -s nullglob
+          tag="${{ steps.ver.outputs.tag }}"
+          if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "==> No existing release for $tag yet — nothing to pre-clean."
+              exit 0
+          fi
+          for f in target/installers/*.msi target/installers/*.dmg target/installers/*.deb; do
+              name=$(basename "$f")
+              echo "==> Deleting any existing asset named: $name"
+              gh release delete-asset "$tag" "$name" -R "$GITHUB_REPOSITORY" --yes 2>/dev/null \
+                  || echo "    (not present on release, ok)"
+          done
+
       - name: Upload installer to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           fail_on_unmatched_files: true
           files: ${{ matrix.artifact-glob }}
-          # Overwrite same-named assets that already exist on the release.
-          # Without this, re-running the workflow against an existing tag
-          # fails with "Validation Failed: already_exists" — common when a
-          # release was first published with one filename and a later run
-          # standardizes the artifact name (e.g. spaced -> hyphenated).
+          # Belt-and-braces with the pre-clean step above. If `gh` ever fails
+          # silently or the asset is recreated by a parallel job between the
+          # delete and upload, this flag covers the gap.
           overwrite_files: true
