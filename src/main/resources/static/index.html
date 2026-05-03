@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Intelli-mailbox — AI-preprocessed inbox</title>
+  <title>Intelli Mailbox</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -1446,6 +1446,11 @@
     </div>
     <button class="secondary" id="btn-settings" title="LLM settings (Ollama / OpenAI)">⚙ Settings</button>
     <button class="secondary" id="btn-help" title="Keyboard shortcuts (?)">?</button>
+    <button class="secondary" id="btn-quit"
+            style="border-color: var(--color-error); color: var(--color-error)"
+            title="Stop the Intelli-mailbox app entirely (closes the local server, frees ~310 MB RAM)">
+      ⏻ Quit
+    </button>
     <span class="meta" id="meta">No inbox loaded yet</span>
   </div>
 
@@ -3129,6 +3134,21 @@ function showHelp() {
   helpMount.querySelector('[data-help-backdrop]')?.addEventListener('click', () => helpMount.innerHTML = '');
 }
 document.querySelector('#btn-help')?.addEventListener('click', showHelp);
+document.querySelector('#btn-quit')?.addEventListener('click', quitApp);
+
+// Hint the backend's IdleShutdownManager that this window is going away.
+// The server's grace timer (default 15s after the last SSE drops) is the
+// authoritative shutdown trigger; this beacon just nudges it to fire
+// faster when the user has actively closed the window. Refresh / accidental
+// close / network blip do NOT cause a real quit because the SSE will
+// reconnect within the grace window — the beacon is advisory.
+window.addEventListener('beforeunload', () => {
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/shutdown-hint');
+    }
+  } catch (e) { /* best effort */ }
+});
 
 // ============================================================
 // Settings modal — provider catalog (Ollama / OpenAI / Anthropic /
@@ -3266,12 +3286,18 @@ function renderSettings() {
     </div>
 
     <div class="settings-actions">
+      <button type="button" id="settings-quit-btn" class="secondary"
+              style="border-color:var(--color-error); color:var(--color-error); margin-right:auto"
+              title="Stop the Intelli-mailbox app entirely (closes the JVM, frees ~310 MB RAM)">
+        ⏻ Quit Intelli-mailbox
+      </button>
       <button type="button" class="secondary" data-settings-close>Cancel</button>
       <button type="button" id="settings-save-btn">Save</button>
     </div>
   `;
   card.querySelectorAll('[data-settings-close]').forEach(b => b.addEventListener('click', closeSettings));
   card.querySelector('#settings-save-btn')?.addEventListener('click', saveSettings);
+  card.querySelector('#settings-quit-btn')?.addEventListener('click', quitApp);
   card.querySelector('#settings-language')?.addEventListener('change', (ev) => {
     settingsState.draft.language = ev.target.value;
   });
@@ -3623,6 +3649,42 @@ async function testProvider(providerId) {
     statusEl?.classList.add('fail');
     if (statusTxt) statusTxt.textContent = 'Probe failed: ' + String(e);
   }
+}
+
+/**
+ * Backup quit path for users who didn't notice the system-tray icon.
+ * Confirms, hits /api/shutdown, then renders a full-page "stopped"
+ * confirmation so the user understands the app is no longer running.
+ */
+async function quitApp() {
+  if (!confirm("Quit Intelli-mailbox? This will stop the app entirely "
+             + "(closes the local server and frees the AI from memory). "
+             + "You'll need to relaunch from the Start Menu / Applications "
+             + "folder to use it again.")) {
+    return;
+  }
+  try {
+    await fetch('/api/shutdown', { method: 'POST' });
+  } catch (e) { /* server might cut the connection mid-response — that's fine */ }
+
+  // Replace the whole UI with a friendly "stopped" page. The server gives
+  // itself ~1s to flush this response before exiting, so by the time the
+  // user reads this, the JVM has already shut down cleanly.
+  document.body.innerHTML = `
+    <div style="min-height:100vh; display:flex; align-items:center; justify-content:center;
+                background:var(--bg-primary); color:var(--text-primary); font-family:var(--font-sans);">
+      <div style="text-align:center; max-width:520px; padding:40px 24px;">
+        <div style="font-size:3rem; margin-bottom:12px;">⏻</div>
+        <h2 style="color:var(--text-heading); font-weight:500; margin:0 0 12px;">Intelli-mailbox stopped</h2>
+        <p style="color:var(--text-secondary); line-height:1.5;">
+          The app is no longer running. You can close this tab.
+        </p>
+        <p style="color:var(--text-muted); font-size:0.85rem; margin-top:24px;">
+          To use Intelli-mailbox again, launch it from your Start Menu (Windows)
+          or Applications folder (macOS / Linux).
+        </p>
+      </div>
+    </div>`;
 }
 
 async function saveSettings() {

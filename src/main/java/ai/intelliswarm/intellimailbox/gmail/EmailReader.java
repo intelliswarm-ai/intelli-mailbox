@@ -183,8 +183,12 @@ public class EmailReader {
         // For ranged listings, navigate back to the exact search/page so
         // rows[idx] points at the same email we listed. For the default
         // inbox path (page=1, no lastRangeQuery), use ensureOnInboxListing.
+        // forceRefresh=false here: the listing already pulled fresh data;
+        // body reads only need to be ON the right page, not re-fetch it.
+        // Clicking Gmail's Refresh between every email cost ~8s per email
+        // and was dominating per-row latency in production logs.
         if (page > 1 || lastRangeQuery != null) {
-            navigateToRangeSearch(lastRangeQuery == null ? "1d" : lastRangeQuery, page);
+            navigateToRangeSearch(lastRangeQuery == null ? "1d" : lastRangeQuery, page, false);
         } else {
             // Defensive: make sure we're on the inbox listing before clicking
             // rows[idx]. Cheap when we already are (single probe call); recovers
@@ -388,16 +392,28 @@ public class EmailReader {
      * actual refresh).
      */
     /**
-     * Hash-route Gmail to the {@code in:inbox newer_than:<range>} search,
-     * page {@code page} (1-indexed). Returns {@code true} if rows for that
-     * page rendered; {@code false} if Gmail has no more results (the row
-     * table is empty after navigation, signalling end-of-pagination).
-     *
-     * <p>Page 1 always forces a refresh (toggle hash + click Gmail's refresh)
-     * so repeat presses of the same range actually re-fetch. Pages 2+ skip
-     * the explicit refresh — Gmail handles per-page navigation natively.
+     * Convenience overload — preserves the old behaviour (page-1 always
+     * force-refreshes via Gmail's own Refresh button). Used by the listing
+     * scrape, where we genuinely want fresh data.
      */
     private boolean navigateToRangeSearch(String range, int page) {
+        return navigateToRangeSearch(range, page, true);
+    }
+
+    /**
+     * Hash-route Gmail to the {@code in:inbox newer_than:<range>} search,
+     * page {@code page} (1-indexed). Returns {@code true} if rows for that
+     * page rendered; {@code false} if Gmail has no more results.
+     *
+     * <p>{@code forceRefresh} controls whether we also click Gmail's own
+     * Refresh button on page 1. {@link #listInbox(String)} passes
+     * {@code true} so a repeat press of the same range still pulls fresh
+     * data. {@link #readEmail(String)} passes {@code false} — it only
+     * needs to be ON the page to click {@code rows[idx]}; clicking
+     * Refresh between every email read costs ~8 s per email and was
+     * dominating reader latency in production logs.
+     */
+    private boolean navigateToRangeSearch(String range, int page, boolean forceRefresh) {
         String baseHash = "#search/in%3Ainbox+newer_than%3A" + range;
         String hash = page <= 1 ? baseHash : (baseHash + "/p" + page);
 
@@ -437,7 +453,7 @@ public class EmailReader {
             logger.info("EmailReader: range={} page={} returned no rows (end of results)", range, page);
             return false;
         }
-        if (page <= 1) {
+        if (page <= 1 && forceRefresh) {
             // Force Gmail to re-run the search on page 1 every time, so a
             // repeat press of the same range still pulls fresh data.
             forceGmailRefetch();

@@ -31,6 +31,10 @@
         <spring-boot.version>3.4.4</spring-boot.version>
         <spring-ai.version>1.0.4</spring-ai.version>
         <swarmai.version>1.0.18</swarmai.version>
+        <!-- Default: production windowed launcher (no cmd window on each click).
+             Override with -Djpackage.console=true to produce a console-attached
+             launcher for debugging. -->
+        <jpackage.console>false</jpackage.console>
     </properties>
 
     <dependencyManagement>
@@ -134,7 +138,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
                 <configuration>
-                    <mainClass>ai.intelliswarm.intellimailbox.IntelliMailboxApplication</mainClass>
+                    <mainClass>ai.intelliswarm.intellimailbox.IntelliMailboxApp</mainClass>
                 </configuration>
                 <executions>
                     <execution>
@@ -190,7 +194,19 @@
         <profile>
             <id>win-installer</id>
             <!-- Explicit-opt-in: pass -Dinstaller. Don't auto-fire on plain `mvn install`
-                 from a dev box (WiX may not be installed locally). CI passes -Dinstaller. -->
+                 from a dev box (WiX may not be installed locally). CI passes -Dinstaller.
+
+                 Local Windows build prerequisites:
+                   1. JDK 21+ on PATH (jpackage jlinks the bundled JRE; any 21+ JDK works).
+                   2. WiX Toolset 3.14 (jpackage shells out to light.exe + candle.exe).
+                      Get it from winget under id WiXToolset.WiXToolset, or from
+                      https://github.com/wixtoolset/wix3/releases. Then ensure
+                      C:\Program Files (x86)\WiX Toolset v3.14\bin is on PATH.
+                      Note: WiX 4 / WiX 5 will NOT work; jpackage uses WiX 3 only.
+
+                 Build with: mvn -Dinstaller package
+                 Output:     target\installers\Intelli-mailbox-VERSION.msi
+            -->
             <activation>
                 <property><name>installer</name></property>
                 <os><family>windows</family></os>
@@ -207,26 +223,87 @@
                                 <phase>package</phase>
                                 <goals><goal>jpackage</goal></goals>
                                 <configuration>
-                                    <name>Intelli-mailbox</name>
+                                    <!-- User-facing app name (Start Menu, Add/Remove Programs,
+                                         Windows install dir). Two words, space-separated, like
+                                         every other Windows app. The internal Maven artifactId
+                                         and the bundled jar name stay as "intelli-mailbox" so
+                                         the technical identity is unchanged. -->
+                                    <name>Intelli Mailbox</name>
                                     <appVersion>${project.version}</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
-                                    <description>AI-preprocessed inbox · local-by-default</description>
+                                    <description>Intelli Mailbox - AI-preprocessed inbox</description>
                                     <input>${project.build.directory}</input>
                                     <mainJar>${project.artifactId}-${project.version}.jar</mainJar>
-                                    <mainClass>ai.intelliswarm.intellimailbox.IntelliMailboxApplication</mainClass>
+                                    <!-- DO NOT set <mainClass> here. Spring Boot fat-jars
+                                         hide the real app classes inside BOOT-INF/classes/,
+                                         which Java's plain -cp <jar> classloader cannot
+                                         see. Setting mainClass forces the launcher to
+                                         invoke our class directly via that classloader,
+                                         which fails with ClassNotFoundException — and
+                                         the windowed launcher exits silently with no
+                                         visible error. Leaving mainClass unset makes
+                                         jpackage read the jar's MANIFEST Main-Class,
+                                         which Spring Boot sets to its own JarLauncher
+                                         (the loader that knows how to find BOOT-INF). -->
                                     <destination>${project.build.directory}/installers</destination>
                                     <icon>${project.basedir}/installer/icons/icon.ico</icon>
-                                    <licenseFile>${project.basedir}/LICENSE</licenseFile>
+                                    <!-- INSTALL-INFO.txt prefixes the Apache 2.0 license with a
+                                         marketing intro about Intelli-mailbox + the Swarm-AI
+                                         framework that powers it. The MSI's License Agreement
+                                         dialog is the most-eyeballed installer step, so this is
+                                         where we explain what users are about to install AND
+                                         introduce them to the Swarm-AI brand. -->
+<!--                                    <licenseFile>${project.basedir}/installer/INSTALL-INFO.txt</licenseFile>-->
+                                    <licenseFile>${project.basedir}/installer/INSTALL-INFO-minimal.txt</licenseFile>
                                     <type>MSI</type>
                                     <winMenu>true</winMenu>
                                     <winMenuGroup>IntelliSwarm</winMenuGroup>
                                     <winShortcut>true</winShortcut>
                                     <winDirChooser>true</winDirChooser>
                                     <winPerUserInstall>true</winPerUserInstall>
+                                    <!-- Surfaces in Windows Settings → Apps → Intelli-mailbox.
+                                         "Help" link and "Publisher URL" both point at the product
+                                         page so users can find docs, releases, and the framework. -->
+                                    <winHelpUrl>https://intelliswarm.ai/products/intelli-mailbox</winHelpUrl>
+                                    <winUpdateUrl>https://intelliswarm.ai/products/intelli-mailbox</winUpdateUrl>
+                                    <!-- CRITICAL: explicit module list for jlink.
+                                         Without this, jpackage tries to auto-detect modules
+                                         via jdeps on the fat-jar — jdeps can't see inside
+                                         Spring Boot's BOOT-INF/lib/ nested-jar layout, so
+                                         the produced runtime/ directory ends up empty and
+                                         the installed launcher silently fails to start
+                                         (no java.exe to exec). java.se is the umbrella
+                                         module covering most of what Spring Boot needs;
+                                         the rest of this list covers what java.se omits
+                                         (crypto + HTTP server + Netty's sun.misc.Unsafe). -->
+                                    <addModules>
+                                        <module>java.se</module>
+                                        <module>jdk.crypto.cryptoki</module>
+                                        <module>jdk.crypto.ec</module>
+                                        <module>jdk.httpserver</module>
+                                        <module>jdk.management.agent</module>
+                                        <module>jdk.naming.dns</module>
+                                        <module>jdk.unsupported</module>
+                                        <module>jdk.zipfs</module>
+                                    </addModules>
+                                    <!-- Console launcher off in production: a black cmd window
+                                         on every launch is bad UX for non-tech users.
+                                         For debug builds, override on the command line:
+                                           mvn -Dinstaller -Djpackage.console=true package
+                                         which produces a console-attached launcher whose stdout
+                                         lands in the user's terminal. -->
+                                    <winConsole>${jpackage.console}</winConsole>
                                     <javaOptions>
                                         <option>-Xmx1g</option>
                                         <option>-Dfile.encoding=UTF-8</option>
+                                        <!-- Pin a per-install log file so first-run failures
+                                             leave a forensic trail even when the user runs the
+                                             windowed launcher from the Start menu. The Spring
+                                             Boot working directory under jpackage is the
+                                             install root, so the file lands at
+                                             %LOCALAPPDATA%\Intelli-mailbox\app.log -->
+                                        <option>-Dlogging.file.name=app.log</option>
                                     </javaOptions>
                                 </configuration>
                             </execution>
@@ -254,7 +331,8 @@
                                 <phase>package</phase>
                                 <goals><goal>jpackage</goal></goals>
                                 <configuration>
-                                    <name>Intelli-mailbox</name>
+                                    <!-- User-facing app name in macOS dock / Applications folder. -->
+                                    <name>Intelli Mailbox</name>
                                     <!-- macOS quirk: CFBundleShortVersionString rejects a leading-zero
                                          version (0.1.0 → "first number cannot be zero or negative"),
                                          so the .dmg gets its own appVersion. The actual jar still
@@ -263,19 +341,20 @@
                                     <appVersion>1.0.0</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
-                                    <description>AI-preprocessed inbox · local-by-default</description>
+                                    <description>Intelli Mailbox - AI-preprocessed inbox</description>
                                     <input>${project.build.directory}</input>
                                     <mainJar>${project.artifactId}-${project.version}.jar</mainJar>
-                                    <mainClass>ai.intelliswarm.intellimailbox.IntelliMailboxApplication</mainClass>
+                                    <!-- DO NOT set <mainClass> — see win-installer profile note. -->
                                     <destination>${project.build.directory}/installers</destination>
                                     <!-- icon.icns is generated by the CI workflow from icon.png
                                          via `sips` + `iconutil` on the macOS runner before invoking
                                          this profile. Locally on macOS, install the same path. -->
                                     <icon>${project.basedir}/installer/icons/icon.icns</icon>
-                                    <licenseFile>${project.basedir}/LICENSE</licenseFile>
+                                    <!-- See win-installer note: marketing intro + license. -->
+                                    <licenseFile>${project.basedir}/installer/INSTALL-INFO.txt</licenseFile>
                                     <type>DMG</type>
                                     <macPackageIdentifier>ai.intelliswarm.intellimailbox</macPackageIdentifier>
-                                    <macPackageName>Intelli-mailbox</macPackageName>
+                                    <macPackageName>Intelli Mailbox</macPackageName>
                                     <javaOptions>
                                         <option>-Xmx1g</option>
                                         <option>-Dfile.encoding=UTF-8</option>
@@ -306,17 +385,21 @@
                                 <phase>package</phase>
                                 <goals><goal>jpackage</goal></goals>
                                 <configuration>
-                                    <name>intelli-mailbox</name>
+                                    <!-- User-facing app name in Linux app menu. The DEB package
+                                         identifier (linuxPackageName below) stays lowercase per
+                                         Debian convention. -->
+                                    <name>Intelli Mailbox</name>
                                     <appVersion>${project.version}</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
-                                    <description>AI-preprocessed inbox · local-by-default</description>
+                                    <description>Intelli Mailbox - AI-preprocessed inbox</description>
                                     <input>${project.build.directory}</input>
                                     <mainJar>${project.artifactId}-${project.version}.jar</mainJar>
-                                    <mainClass>ai.intelliswarm.intellimailbox.IntelliMailboxApplication</mainClass>
+                                    <!-- DO NOT set <mainClass> — see win-installer profile note. -->
                                     <destination>${project.build.directory}/installers</destination>
                                     <icon>${project.basedir}/installer/icons/icon.png</icon>
-                                    <licenseFile>${project.basedir}/LICENSE</licenseFile>
+                                    <!-- See win-installer note: marketing intro + license. -->
+                                    <licenseFile>${project.basedir}/installer/INSTALL-INFO.txt</licenseFile>
                                     <type>DEB</type>
                                     <linuxPackageName>intelli-mailbox</linuxPackageName>
                                     <linuxAppCategory>Office</linuxAppCategory>

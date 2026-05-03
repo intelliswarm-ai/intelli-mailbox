@@ -1,0 +1,296 @@
+============================================================
+INTELLI MAILBOX
+AI-preprocessed inbox - local by default - open source
+Powered by Swarm-AI - the open-source agent framework
+from IntelliSwarm. Learn more: https://intelliswarm.ai
+============================================================
+
+
+WHAT YOU ARE INSTALLING
+
+Intelli Mailbox sits on top of your existing Gmail and uses an
+AI to triage every email before you read it. Each message
+arrives tagged, summarised, and (when relevant) with three
+pre-drafted replies you can inject into Gmail's compose box
+with one click - formal, friendly, or brief.
+
+By default the AI runs ON YOUR COMPUTER. Email contents never
+leave your laptop unless you explicitly switch to a cloud
+provider in Settings.
+
+
+WHAT YOU GET
+
+* 8-category email badges (Meeting, Risk, External, Automated,
+VIP, Follow-up, Newsletter, Finance) - multi-dimensional, not
+a single "important" flag.
+
+* Structured action items with type (Reply / Review / Schedule
+/ Pay / Submit / Read), priority, and due dates - overdue
+items highlighted.
+
+* Pre-drafted replies in three tones - written in the same
+language as the email, ready to inject into Gmail's compose
+box.
+
+* Three views: Inbox (flat list), Digest (grouped by category),
+and Suggestions (AI-recommended actions for the day).
+
+* Date-range fetching - last 24 hours through last month.
+
+* 20 output languages.
+
+* Source-quote highlighting - every AI claim traces back to a
+verbatim excerpt from the email so you can audit it.
+
+* In-memory only - nothing persisted to disk between launches.
+
+
+POWERED BY SWARM-AI
+
+Intelli Mailbox is built on Swarm-AI, IntelliSwarm's
+open-source multi-agent framework for the JVM. Swarm-AI
+provides 30+ pluggable tools (browser automation, email,
+web search, code execution, file I/O, vector search), agent
+orchestration with streaming tool-use events, 11 LLM provider
+integrations (Ollama, OpenAI, Anthropic, Groq, Mistral,
+DeepSeek, OpenRouter, Azure OpenAI, LM Studio, LocalAI, custom
+OpenAI-compatible endpoints), and built-in prompt templates,
+structured outputs, and an observability layer for tool-call
+tracing.
+
+Project home: https://intelliswarm.ai
+Source code:  https://github.com/intelliswarm-ai
+
+
+PRIVACY PROMISE
+
+* Default AI runs locally via Ollama (privacy by default).
+* Email contents never persisted to disk.
+* No telemetry, no analytics, no phone-home.
+* Cloud LLM providers are opt-in and clearly marked in the UI.
+* Source code is auditable on GitHub.
+
+
+YOUR RESPONSIBILITY
+
+By installing and using Intelli Mailbox you confirm that:
+
+* You are the rightful owner of, or an authorised user for,
+the Gmail account this software will read from.
+
+* You will comply with Google's Terms of Service for that
+account, including any restrictions on automated access.
+Intelli Mailbox drives a real Chrome browser via the standard
+DevTools Protocol - functionally similar to a browser
+extension. You alone are responsible for ensuring such access
+is permitted by your account, your employer, or any
+organisation whose data may pass through it.
+
+* If you switch the AI engine to a third-party cloud provider
+in Settings, email content WILL be transmitted to that
+provider's servers. By making that selection you consent to
+the transmission and accept responsibility for any compliance,
+privacy, or confidentiality obligations it may trigger.
+
+* AI output is ADVISORY ONLY. You are responsible for
+reviewing every reply draft before it is sent and for
+verifying every flagged action item against the original email.
+
+
+DISCLAIMER AND LIMITATION OF LIABILITY
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, NON-INFRINGEMENT, AND ACCURACY OF AI-GENERATED OUTPUT.
+
+To the maximum extent permitted by applicable law,
+IntelliSwarm.AI, its contributors, and any party that
+modifies and/or distributes Intelli Mailbox accept NO
+LIABILITY for any direct, indirect, incidental, special,
+exemplary, or consequential damages arising out of or related
+to your use of the software, including but not limited to:
+
+* Loss, corruption, or unauthorised disclosure of email or
+other data accessible via your Gmail account.
+
+* Suspension or termination of your Gmail account by Google or
+any third party, including action triggered by browser
+automation or unusual access patterns.
+
+* Errors, omissions, or hallucinations in AI-generated
+summaries, action items, or reply drafts.
+
+* Privacy or confidentiality breaches resulting from your
+choice of cloud LLM provider, network configuration, or
+third-party software running on your computer.
+
+* Compliance violations (GDPR, HIPAA, attorney-client
+privilege, professional secrecy, etc.) arising from your use
+of the software in a regulated context.
+
+* Damages caused by malware or compromised dependencies that
+interfere with Intelli Mailbox.
+
+* Security vulnerabilities affecting the way Intelli Mailbox
+attaches to Chrome, the dedicated Chrome profile directory it
+creates, or the local control port it opens.
+
+The Apache License, Version 2.0 governs the open-source
+license grant. The full Terms of Use document is at:
+https://github.com/intelliswarm-ai/intelli-mailbox/blob/main/TERMS-OF-USE.md
+By installing the Software you agree to both. In matters of
+copyright and patent the Apache License governs.
+
+
+SYSTEM REQUIREMENTS
+
+* Windows 10 1809+ / 11 (or Windows Server 2019+).
+* About 3 GB free disk (1 GB for the app + bundled Java
+runtime, 2 GB for the AI model).
+* 8 GB RAM recommended for smooth local AI on the default
+model.
+* Google Chrome (or Edge / Brave / any Chromium browser).
+Intelli Mailbox attaches to it via the DevTools protocol to
+read your Gmail. No Gmail API access required, no OAuth.
+
+The installer ships its own Java 21 runtime. You don't need
+to install Java separately. The AI engine (Ollama) is a
+separate one-time install - the in-app Setup Check will guide
+you through it on first launch.
+
+
+============================================================
+LICENSE - Apache License, Version 2.0
+Copyright (c) 2026 IntelliSwarm.AI
+============================================================
+
+
+Apache License, Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use,
+reproduction, and distribution as defined by Sections 1
+through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized
+by the copyright owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and
+all other entities that control, are controlled by, or are
+under common control with that entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity
+exercising permissions granted by this License.
+
+"Source" form shall mean the preferred form for making
+modifications, including but not limited to software source
+code, documentation source, and configuration files.
+
+"Object" form shall mean any form resulting from mechanical
+transformation or translation of a Source form, including but
+not limited to compiled object code, generated documentation,
+and conversions to other media types.
+
+"Work" shall mean the work of authorship, whether in Source or
+Object form, made available under the License, as indicated by
+a copyright notice that is included in or attached to the work.
+
+"Derivative Works" shall mean any work, whether in Source or
+Object form, that is based on (or derived from) the Work.
+
+"Contribution" shall mean any work of authorship intentionally
+submitted to Licensor for inclusion in the Work.
+
+"Contributor" shall mean Licensor and any individual or Legal
+Entity on behalf of whom a Contribution has been received by
+Licensor and subsequently incorporated within the Work.
+
+
+2. Grant of Copyright License.
+
+Subject to the terms and conditions of this License, each
+Contributor hereby grants to You a perpetual, worldwide,
+non-exclusive, no-charge, royalty-free, irrevocable copyright
+license to reproduce, prepare Derivative Works of, publicly
+display, publicly perform, sublicense, and distribute the Work
+and such Derivative Works in Source or Object form.
+
+
+3. Grant of Patent License.
+
+Subject to the terms and conditions of this License, each
+Contributor hereby grants to You a perpetual, worldwide,
+non-exclusive, no-charge, royalty-free, irrevocable patent
+license to make, have made, use, offer to sell, sell, import,
+and otherwise transfer the Work, where such license applies
+only to those patent claims licensable by such Contributor
+that are necessarily infringed by their Contribution(s).
+
+
+4. Redistribution.
+
+You may reproduce and distribute copies of the Work or
+Derivative Works thereof in any medium, with or without
+modifications, and in Source or Object form, provided that You
+meet the conditions of giving recipients a copy of the License,
+notifying them of any modifications, retaining all copyright
+and attribution notices, and including a NOTICE file if one
+exists.
+
+
+5. Submission of Contributions.
+
+Unless You explicitly state otherwise, any Contribution
+intentionally submitted for inclusion in the Work shall be
+under the terms and conditions of this License.
+
+
+6. Trademarks.
+
+This License does not grant permission to use the trade names,
+trademarks, service marks, or product names of the Licensor.
+
+
+7. Disclaimer of Warranty.
+
+Unless required by applicable law or agreed to in writing,
+Licensor provides the Work on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied, including, without limitation, any warranties of
+TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+PARTICULAR PURPOSE.
+
+
+8. Limitation of Liability.
+
+In no event and under no legal theory shall any Contributor be
+liable to You for damages, including any direct, indirect,
+special, incidental, or consequential damages arising as a
+result of this License or out of the use or inability to use
+the Work, even if such Contributor has been advised of the
+possibility of such damages.
+
+
+9. Accepting Warranty or Support.
+
+While redistributing the Work, You may choose to offer support,
+warranty, indemnity, or other liability obligations consistent
+with this License. However, You may act only on Your own behalf
+and only if You agree to indemnify each Contributor for any
+liability incurred.
+
+
+END OF TERMS AND CONDITIONS
+
+Copyright (c) 2026 IntelliSwarm.AI
+
+Licensed under the Apache License, Version 2.0. You may obtain
+a copy of the License at:
+http://www.apache.org/licenses/LICENSE-2.0

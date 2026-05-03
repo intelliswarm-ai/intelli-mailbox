@@ -42,10 +42,14 @@ public class InboxController {
 
     private final PreprocessingPipeline pipeline;
     private final EmailReader reader;
+    private final ai.intelliswarm.intellimailbox.system.IdleShutdownManager idleShutdown;
 
-    public InboxController(PreprocessingPipeline pipeline, EmailReader reader) {
+    public InboxController(PreprocessingPipeline pipeline,
+                           EmailReader reader,
+                           ai.intelliswarm.intellimailbox.system.IdleShutdownManager idleShutdown) {
         this.pipeline = pipeline;
         this.reader = reader;
+        this.idleShutdown = idleShutdown;
     }
 
     @GetMapping("/inbox")
@@ -89,8 +93,16 @@ public class InboxController {
             }
         };
         pipeline.subscribe(sink);
+        // Tell the IdleShutdownManager a browser is here — cancels any
+        // pending "no clients, shutting down" timer.
+        idleShutdown.clientConnected();
 
-        Runnable cleanup = () -> pipeline.unsubscribe(sink);
+        Runnable cleanup = () -> {
+            pipeline.unsubscribe(sink);
+            // Tell the IdleShutdownManager this browser is gone. If it was
+            // the last one, the manager will start the grace-period timer.
+            idleShutdown.clientDisconnected();
+        };
         emitter.onCompletion(cleanup);
         emitter.onTimeout(cleanup);
         emitter.onError(t -> cleanup.run());

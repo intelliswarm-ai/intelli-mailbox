@@ -40,9 +40,9 @@ import java.time.Duration;
  * up alongside this app's own beans.
  */
 @SpringBootApplication(scanBasePackages = "ai.intelliswarm")
-public class IntelliMailboxApplication {
+public class IntelliMailboxApp {
 
-    private static final Logger logger = LoggerFactory.getLogger(IntelliMailboxApplication.class);
+    private static final Logger logger = LoggerFactory.getLogger(IntelliMailboxApp.class);
 
     public static void main(String[] args) {
         // Default profile dir if not overridden — separate from gmail-dashboard's so the two
@@ -61,7 +61,7 @@ public class IntelliMailboxApplication {
         // Privacy-by-default. SPRING_PROFILES_ACTIVE=openai-mini flips to gpt-4o-mini.
         setIfAbsent("spring.profiles.active", "ollama");
 
-        SpringApplication.run(IntelliMailboxApplication.class, args);
+        SpringApplication.run(IntelliMailboxApp.class, args);
     }
 
     /**
@@ -96,25 +96,16 @@ public class IntelliMailboxApplication {
             browserProps.setCdpUrl(chrome.cdpUrl());
             browser.shutdown(); // discard cached state so next call re-inits in attach mode
 
-            // Pre-warm the inbox in a daemon thread — best effort, short timeout.
-            // We used to do a 30s NETWORKIDLE navigate here, which on a cold
-            // Chrome that hasn't seen google.com yet just parks against the
-            // auth wall for the full 30s. That's the same 30s that showed up
-            // in the user's startup logs as "BrowserTool navigate failed:
-            // Timeout 30000ms exceeded" — pure waste. Pass an explicit short
-            // timeout so we fail fast and don't bog down the first /api/inbox.
-            Thread prewarm = new Thread(() -> {
-                try {
-                    browser.execute(java.util.Map.of(
-                            "operation", "navigate",
-                            "url",        "https://mail.google.com/mail/u/0/#inbox",
-                            "timeout_ms", 5_000));
-                } catch (Exception e) {
-                    logger.debug("IntelliMailbox pre-warm navigate didn't complete (best-effort, ok): {}", e.getMessage());
-                }
-            }, "intellimailbox-prewarm");
-            prewarm.setDaemon(true);
-            prewarm.start();
+            // No pre-warm navigate. We used to fire one here in a daemon
+            // thread, but BrowserTool's `navigate` op ignores `timeout_ms`
+            // (swarmai issue) — so it always sat on Playwright's default
+            // 30-second NETWORKIDLE timeout. Worse, BrowserTool is fully
+            // synchronized, so during those 30s ANY OTHER browser-tool call
+            // (like the welcome-screen diagnostics' Gmail probe) blocked
+            // behind the prewarm lock. Net effect: the user saw "Checking
+            // your system…" stuck for half a minute on every cold start.
+            // Skipping the prewarm trades nothing — the first refreshInbox()
+            // does the navigate on demand via ensureOnInboxListing() anyway.
 
             String uiUrl = "http://localhost:" + System.getProperty("server.port", "8090") + "/";
             logger.info("");

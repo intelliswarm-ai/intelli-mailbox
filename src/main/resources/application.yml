@@ -9,6 +9,11 @@ spring:
     name: intellimailbox
   main:
     web-application-type: servlet
+    # AWT SystemTray needs a non-headless JVM. Spring Boot defaults to
+    # headless=true for server apps; we override because the system-tray
+    # icon (SystemTrayManager) is the primary "Quit" affordance for
+    # non-technical users.
+    headless: false
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:ollama}
   # NOTE: spring.autoconfigure.exclude is set per-profile in application-ollama.yml /
@@ -48,10 +53,12 @@ intellimailbox:
 # ============================================================================
 logging:
   pattern:
-    # Drops the empty trace-id column (`%mdc{traceId:-}`/`spanId`) that
+    # Drops the empty trace-id column (`[%X{traceId:-},%X{spanId:-}]`) that
     # Spring Boot's default pattern leaves blank when no tracer is configured.
-    # Saves ~50 chars per line.
+    # Saves ~50 chars per line. Spring Boot uses TWO separate patterns —
+    # console (stdout) and file (logfile) — so both have to be overridden.
     console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(%-5p) %clr(%-30.30logger{29}){cyan} : %m%n%wEx"
+    file:    "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5p [%t] %-40.40logger{39} : %m%n%wEx"
   level:
     # SwarmEventListener emits TOOL_STARTED/TOOL_COMPLETED for every
     # browser-tool round trip — ~50 lines per email scrape. Useful for

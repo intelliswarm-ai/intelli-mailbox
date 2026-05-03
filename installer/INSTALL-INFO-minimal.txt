@@ -1,0 +1,10 @@
+Intelli Mailbox - AI-preprocessed inbox
+
+Powered by Swarm-AI from IntelliSwarm.
+
+By installing you accept the Apache License 2.0 and the
+Terms of Use distributed with this software.
+
+Apache License, Version 2.0
+Copyright (c) 2026 IntelliSwarm.AI
+http://www.apache.org/licenses/LICENSE-2.0
