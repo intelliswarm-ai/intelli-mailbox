@@ -422,3 +422,9 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           fail_on_unmatched_files: true
           files: ${{ matrix.artifact-glob }}
+          # Overwrite same-named assets that already exist on the release.
+          # Without this, re-running the workflow against an existing tag
+          # fails with "Validation Failed: already_exists" — common when a
+          # release was first published with one filename and a later run
+          # standardizes the artifact name (e.g. spaced -> hyphenated).
+          clobber: true
