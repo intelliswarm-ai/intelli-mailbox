@@ -102,10 +102,16 @@ jobs:
           ls -la icon.icns
           rm -rf icon.iconset
 
-      # On Linux, jpackage's DEB output needs the `fakeroot` binary present.
-      - name: Install fakeroot (Linux only)
+      # jpackage's DEB output needs `fakeroot` to build, and its postinst
+      # script calls `xdg-desktop-menu install` which fails on the headless
+      # runner with "No writable system menu directory found" unless xdg-utils
+      # is present and /usr/share/applications exists.
+      - name: Install Linux build + desktop deps
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update -qq && sudo apt-get install -y fakeroot
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y fakeroot xdg-utils desktop-file-utils
+          sudo mkdir -p /usr/share/applications /usr/share/desktop-directories /usr/share/icons/hicolor
 
       - name: Build fat-jar + native installer
         shell: bash

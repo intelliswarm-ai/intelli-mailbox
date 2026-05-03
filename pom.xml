@@ -254,8 +254,7 @@
                                          dialog is the most-eyeballed installer step, so this is
                                          where we explain what users are about to install AND
                                          introduce them to the Swarm-AI brand. -->
-<!--                                    <licenseFile>${project.basedir}/installer/INSTALL-INFO.txt</licenseFile>-->
-                                    <licenseFile>${project.basedir}/installer/INSTALL-INFO-minimal.txt</licenseFile>
+                                    <licenseFile>${project.basedir}/installer/INSTALL-INFO.txt</licenseFile>
                                     <type>MSI</type>
                                     <winMenu>true</winMenu>
                                     <winMenuGroup>IntelliSwarm</winMenuGroup>
