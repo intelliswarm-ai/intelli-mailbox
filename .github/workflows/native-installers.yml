@@ -137,9 +137,13 @@ jobs:
       # CommandLineRunner detects that, logs it, and returns early — but the
       # web server is already up at that point, so /api/health responds.
       # =====================================================================
+      # NOTE: shell is `pwsh` (PowerShell 7), not `powershell` (Windows PS 5.1).
+      # 5.1 reads runner-generated PS1 files as Windows-1252 when there is no
+      # BOM, which mangles the em-dashes and middle-dots in this script and
+      # breaks the parser with cascading "Unexpected token '}'" errors.
       - name: Smoke-test the MSI before uploading
         if: matrix.os == 'windows-latest'
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -234,9 +238,19 @@ jobs:
           echo "==> Installing $deb"
           sudo dpkg -i "$deb" || sudo apt-get install -fy
 
-          # jpackage Linux DEB drops binaries at /opt/intelli-mailbox/bin/Intelli-mailbox
-          exe=$(find /opt -type f -executable \( -name 'Intelli-mailbox' -o -name 'intelli-mailbox' \) 2>/dev/null | head -1)
-          [ -z "$exe" ] && { echo "Could not locate launcher"; exit 1; }
+          # jpackage drops the binary at /opt/intelli-mailbox/bin/<name>, where
+          # <name> is the value of <name> in pom.xml — here "Intelli Mailbox"
+          # WITH A SPACE. The old find with -name 'intelli-mailbox' missed it
+          # because of the space + hyphen mismatch. Show the install dir for
+          # debugging, then pick the first executable file in /opt/.../bin.
+          echo "==> Listing /opt/intelli-mailbox after install:"
+          ls -laR /opt/intelli-mailbox 2>/dev/null || echo "(install dir not found)"
+          exe=$(find /opt/intelli-mailbox/bin -maxdepth 1 -type f -executable 2>/dev/null | head -1)
+          if [ -z "${exe:-}" ]; then
+              # Fallback in case linuxPackageName ever changes.
+              exe=$(find /opt -maxdepth 3 -type f -executable -path '*/bin/*' 2>/dev/null | head -1)
+          fi
+          [ -z "${exe:-}" ] && { echo "Could not locate launcher"; exit 1; }
           echo "==> Launcher: $exe"
 
           appLog=$(mktemp)
