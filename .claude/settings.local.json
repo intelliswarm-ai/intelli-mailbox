@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(mvn -q -o compile)",
-      "Bash(mvn -o compile)"
-    ]
-  }
-}
