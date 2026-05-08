@@ -149,6 +149,82 @@ public class DiagnosticsController {
         return emitter;
     }
 
+    /**
+     * Spawn {@code ollama serve} in the background and poll the configured
+     * baseUrl until /api/tags responds (or we time out). Used when Ollama is
+     * installed but the daemon isn't currently running — far less invasive
+     * than re-running the installer.
+     */
+    @GetMapping(path = "/fix/start-ollama", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter startOllama() {
+        SseEmitter emitter = new SseEmitter(0L);
+        Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "diagnostics-start-ollama");
+            t.setDaemon(true);
+            return t;
+        }).submit(() -> streamOllamaStart(emitter));
+        return emitter;
+    }
+
+    private void streamOllamaStart(SseEmitter e) {
+        if (!commandAvailable("ollama")) {
+            sendSseStatus(e, "error",
+                    "Couldn't find the ollama binary on PATH. Install it first via "
+                            + "\"Install Ollama for me\".",
+                    null);
+            try { e.complete(); } catch (Exception ignored) { }
+            return;
+        }
+        sendSseStatus(e, "starting", "Launching Ollama in the background…", null);
+        try {
+            ProcessBuilder pb = new ProcessBuilder("ollama", "serve");
+            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+            pb.start(); // fire-and-forget — the daemon runs until the user logs out / shuts down
+
+            LlmSettings s = SettingsStore.load();
+            LlmProvider p = ProviderCatalog.byId(s.activeProvider())
+                    .orElseGet(() -> ProviderCatalog.byId(ProviderCatalog.defaultProviderId()).orElseThrow());
+            ProviderConfig cfg = s.configFor(p.id());
+            String baseUrl = cfg.baseUrl().isBlank() ? p.defaultBaseUrl() : cfg.baseUrl();
+            URI tagsUri = URI.create(baseUrl.replaceAll("/+$", "") + "/api/tags");
+
+            long deadline = System.currentTimeMillis() + 12_000;
+            int tries = 0;
+            while (System.currentTimeMillis() < deadline) {
+                tries++;
+                try {
+                    HttpResponse<Void> r = HTTP.send(
+                            HttpRequest.newBuilder().uri(tagsUri)
+                                    .timeout(Duration.ofSeconds(2))
+                                    .GET().build(),
+                            HttpResponse.BodyHandlers.discarding());
+                    if (r.statusCode() / 100 == 2) {
+                        sendSseStatus(e, "done",
+                                "Ollama is now running. Click Re-check to continue.", 100);
+                        return;
+                    }
+                } catch (Exception probeEx) {
+                    // Daemon not up yet — keep polling.
+                }
+                int pct = Math.min(95, (int) ((tries * 100L) / 14)); // soft progress until we land
+                sendSseStatus(e, "progress",
+                        "Waiting for Ollama to come up… (attempt " + tries + ")", pct);
+                Thread.sleep(800);
+            }
+            sendSseStatus(e, "error",
+                    "Ollama didn't respond within 12 seconds. "
+                            + "Try opening it manually from your Start menu / Applications, "
+                            + "then click Re-check.",
+                    null);
+        } catch (Exception ex) {
+            sendSseStatus(e, "error",
+                    "Couldn't start Ollama: " + ex.getMessage(), null);
+        } finally {
+            try { e.complete(); } catch (Exception ignored) { }
+        }
+    }
+
     private void streamOllamaInstall(SseEmitter e) {
         String os = System.getProperty("os.name", "").toLowerCase();
         String[] cmd;

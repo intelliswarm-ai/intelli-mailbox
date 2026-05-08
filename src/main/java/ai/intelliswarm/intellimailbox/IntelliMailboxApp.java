@@ -12,6 +12,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -45,6 +46,14 @@ public class IntelliMailboxApp {
     private static final Logger logger = LoggerFactory.getLogger(IntelliMailboxApp.class);
 
     public static void main(String[] args) {
+        // Single-instance guard. When a user double-clicks the icon and an
+        // older instance is still bound to the configured port, Spring Boot's
+        // Tomcat fails with "Port N was already in use" and the JVM exits —
+        // surfacing as a generic launcher error to the user. Detect that here
+        // and either re-open the existing UI or fail with a clear message.
+        int port = resolvePreflightPort(args);
+        ensureSingleInstance(port);
+
         // Default profile dir if not overridden — separate from gmail-dashboard's so the two
         // products don't fight over the same Chrome session if both are on the same machine.
         Path defaultProfile = Paths.get(System.getProperty("user.home"),
@@ -62,6 +71,115 @@ public class IntelliMailboxApp {
         setIfAbsent("spring.profiles.active", "ollama");
 
         SpringApplication.run(IntelliMailboxApp.class, args);
+    }
+
+    /**
+     * Resolve the port the embedded server will try to bind, mirroring the
+     * precedence Spring uses: {@code --server.port=…} CLI flag, then
+     * {@code -Dserver.port=…} system property, then {@code SERVER_PORT}
+     * env var, then the {@code 8090} default in application.yml.
+     */
+    private static int resolvePreflightPort(String[] args) {
+        for (String a : args) {
+            if (a == null) continue;
+            if (a.startsWith("--server.port=")) {
+                return parsePortOr(a.substring("--server.port=".length()), 8090);
+            }
+        }
+        String sp = System.getProperty("server.port");
+        if (sp != null && !sp.isBlank()) return parsePortOr(sp, 8090);
+        String env = System.getenv("SERVER_PORT");
+        if (env != null && !env.isBlank()) return parsePortOr(env, 8090);
+        return 8090;
+    }
+
+    private static int parsePortOr(String s, int fallback) {
+        try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { return fallback; }
+    }
+
+    /**
+     * If the configured port is already in use, probe whether the listener is
+     * another IntelliMailbox instance via {@code GET /api/health}. If yes,
+     * ask it to shut down via {@code POST /api/shutdown} and wait for the
+     * port to free up before continuing — gives the user a clean "click icon
+     * to relaunch" experience even when a previous JVM is still around.
+     * If something else owns the port, exit non-zero with a clear message.
+     */
+    private static void ensureSingleInstance(int port) {
+        if (isPortFree(port)) return;
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2)).build();
+        boolean isOurInstance = false;
+        try {
+            HttpResponse<String> r = client.send(
+                    HttpRequest.newBuilder()
+                            .uri(URI.create("http://localhost:" + port + "/api/health"))
+                            .timeout(Duration.ofSeconds(2)).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            isOurInstance = r.statusCode() / 100 == 2
+                    && r.body() != null
+                    && r.body().contains("\"ok\":true");
+        } catch (Exception probeFailed) {
+            // Port bound but not answering HTTP — treat as "not us".
+        }
+
+        if (!isOurInstance) {
+            System.err.println();
+            System.err.println("IntelliMailbox can't start: port " + port
+                    + " is already in use by another application.");
+            System.err.println("Either close that app, or set SERVER_PORT "
+                    + "(e.g. SERVER_PORT=8091) and try again.");
+            System.err.println();
+            System.exit(2);
+        }
+
+        logger.info("IntelliMailbox is already running on port {} — asking it to shut down "
+                + "so this launch can take over.", port);
+        try {
+            client.send(
+                    HttpRequest.newBuilder()
+                            .uri(URI.create("http://localhost:" + port + "/api/shutdown"))
+                            .timeout(Duration.ofSeconds(3))
+                            .POST(HttpRequest.BodyPublishers.noBody()).build(),
+                    HttpResponse.BodyHandlers.discarding());
+        } catch (Exception e) {
+            logger.warn("Couldn't reach the existing instance's /api/shutdown: {}",
+                    e.getMessage());
+        }
+
+        // ShutdownController has a 10s hard deadline; give it a little headroom.
+        long deadline = System.currentTimeMillis() + 12_000;
+        while (System.currentTimeMillis() < deadline) {
+            try { Thread.sleep(400); } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt(); break;
+            }
+            if (isPortFree(port)) {
+                logger.info("Previous IntelliMailbox stopped — continuing startup.");
+                return;
+            }
+        }
+        System.err.println();
+        System.err.println("Couldn't replace the running IntelliMailbox: the old instance "
+                + "didn't release port " + port + " within 12 seconds.");
+        System.err.println("Open the existing app at http://localhost:" + port + "/ "
+                + "or end the running javaw.exe / java process manually, then retry.");
+        System.err.println();
+        System.exit(2);
+    }
+
+    /**
+     * Try to grab the port for a moment. Free ⇒ {@code true}; bound by
+     * something ⇒ {@code false}. Cheaper and more reliable than a TCP connect
+     * probe (which can be coloured by firewalls / loopback peculiarities).
+     */
+    private static boolean isPortFree(int port) {
+        try (ServerSocket s = new ServerSocket(port)) {
+            s.setReuseAddress(false);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

@@ -15,6 +15,7 @@ import { InboxRowComponent } from './inbox-row.component';
 import { ProcessPickerComponent } from './process-picker.component';
 import { StatusFilterBarComponent, StatusFilter } from './status-filter-bar.component';
 import { EmailDetailModalComponent } from './email-detail-modal.component';
+import { ActionItemsPanelComponent } from './action-items-panel.component';
 import { DigestViewComponent } from '../digest/digest-view.component';
 import { SuggestionsViewComponent } from '../suggestions/suggestions-view.component';
 
@@ -48,7 +49,8 @@ const VIEW_KEY = 'intellimailbox-view';
   standalone: true,
   imports: [
     FormsModule, InboxRowComponent, ProcessPickerComponent, StatusFilterBarComponent,
-    EmailDetailModalComponent, DigestViewComponent, SuggestionsViewComponent,
+    EmailDetailModalComponent, ActionItemsPanelComponent,
+    DigestViewComponent, SuggestionsViewComponent,
   ],
   template: `
     <div class="toolbar">
@@ -113,6 +115,14 @@ const VIEW_KEY = 'intellimailbox-view';
 
     @if (errorMsg()) {
       <div class="error">{{ errorMsg() }}</div>
+    }
+
+    @if (view() !== 'suggestions' && items().length > 0) {
+      <im-action-items-panel
+        [items]="items()"
+        [enrichedMap]="enriched()"
+        (open)="openDetail($event)"
+      ></im-action-items-panel>
     }
 
     @switch (view()) {

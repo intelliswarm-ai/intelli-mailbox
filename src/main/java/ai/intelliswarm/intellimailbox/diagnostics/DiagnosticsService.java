@@ -99,9 +99,19 @@ public class DiagnosticsService {
                         "Open Ollama from your Start menu (or Applications on Mac) so the engine "
                                 + "is running, then click Re-check below.");
             } catch (Exception e) {
-                // Two common cases: (1) Ollama not installed, (2) installed but not running.
-                // We can't reliably distinguish without a process probe — give the most
-                // common installation guidance.
+                // Distinguish "installed but not running" from "not installed yet" by
+                // probing for the ollama binary on PATH — running `ollama serve` is
+                // a far less invasive auto-fix than re-running the installer.
+                if (commandOnPath("ollama")) {
+                    return DiagnosticCheck.fail("llm.reachable",
+                            "AI engine isn't running",
+                            "Ollama is installed but the background engine isn't responding at " + baseUrl + ".",
+                            "Click \"Start Ollama for me\" — we'll launch the engine in the background. "
+                                    + "If it doesn't come up after that, open Ollama from your Start menu "
+                                    + "(or Applications on Mac) manually, then click Re-check.")
+                            .withFixCommand("ollama serve")
+                            .withAutoFix("start-ollama");
+                }
                 String os = String.valueOf(SystemInfo.snapshot().get("osFamily"));
                 String installCmd = switch (os) {
                     case "windows" -> "winget install Ollama.Ollama";
@@ -110,8 +120,7 @@ public class DiagnosticsService {
                 };
                 return DiagnosticCheck.fail("llm.reachable",
                         "AI engine not found",
-                        "Couldn't reach the local AI engine. It's either not installed yet, "
-                                + "or installed but not currently running.",
+                        "Couldn't find Ollama on this machine.",
                         "Click \"Install Ollama for me\" and we'll install it automatically using "
                                 + "your system's package manager. The download is about 250 MB, "
                                 + "one-time. Ollama then runs in the background whenever your computer "
@@ -204,6 +213,21 @@ public class DiagnosticsService {
                     "Can't tell if the AI model is ready",
                     "Couldn't check Ollama's installed models.",
                     "This usually clears up once Ollama is running. Re-check after starting it.");
+        }
+    }
+
+    /** Cheap "is this binary on PATH" check via {@code where}/{@code command -v}. */
+    private static boolean commandOnPath(String binary) {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        String[] probe = os.contains("win")
+                ? new String[] { "where", binary }
+                : new String[] { "/bin/bash", "-lc", "command -v " + binary };
+        try {
+            Process p = new ProcessBuilder(probe).redirectErrorStream(true).start();
+            try (var in = p.getInputStream()) { in.readAllBytes(); }
+            return p.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
         }
     }
 

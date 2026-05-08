@@ -15,7 +15,7 @@ interface ProgressState {
 const POLL_INTERVAL_MS = 4_000;
 const AUTO_START_SECONDS = 3;
 
-const STREAMED_ACTIONS = new Set(['pull-model', 'install-ollama']);
+const STREAMED_ACTIONS = new Set(['pull-model', 'install-ollama', 'start-ollama']);
 
 const STATUS_ICON: Record<string, string> = {
   ok:   '✓',
@@ -29,6 +29,7 @@ function autoFixLabel(action: string): string {
   switch (action) {
     case 'pull-model':           return '↓ Download AI model now';
     case 'install-ollama':       return '↓ Install Ollama for me';
+    case 'start-ollama':         return '▶ Start Ollama for me';
     case 'open-gmail':           return '↗ Open Gmail in Chrome';
     case 'open-ollama-download': return '↗ Open Ollama download page';
     default:                     return '🛠 Fix automatically';
