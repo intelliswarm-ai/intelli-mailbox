@@ -72,12 +72,22 @@ public class DiagnosticsController {
         this.browserToolProvider = browserToolProvider;
     }
 
+    /** Check ids that are advisory only — their warn/fail status doesn't
+     *  block the welcome-screen auto-start countdown. Currently just the
+     *  embedding model: chat semantic search degrades gracefully without
+     *  it (10 other tools still work), so blocking onboarding on this
+     *  optional feature would be worse UX than letting the user proceed
+     *  and pull the model later from Settings. */
+    private static final java.util.Set<String> ADVISORY_CHECK_IDS =
+            java.util.Set.of("llm.embedding");
+
     @GetMapping
     public Map<String, Object> diagnose() {
         List<DiagnosticCheck> checks = service.runAll();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("checks", checks);
-        out.put("ready", checks.stream().allMatch(c -> "ok".equals(c.status())));
+        out.put("ready", checks.stream().allMatch(c ->
+                "ok".equals(c.status()) || ADVISORY_CHECK_IDS.contains(c.id())));
         // Tally so the UI can show "3 of 5 ready".
         long ok   = checks.stream().filter(c -> "ok".equals(c.status())).count();
         long fail = checks.stream().filter(c -> "fail".equals(c.status())).count();
@@ -126,7 +136,21 @@ public class DiagnosticsController {
             Thread t = new Thread(r, "diagnostics-pull-model");
             t.setDaemon(true);
             return t;
-        }).submit(() -> streamModelPull(emitter));
+        }).submit(() -> streamModelPull(emitter, null /* use chat model from settings */));
+        return emitter;
+    }
+
+    /** Pulls the embedding model that powers chat semantic search. Mirrors
+     *  pull-model but hard-codes the model so it isn't tied to the active
+     *  chat-model setting — embeddings and chat are separate dimensions. */
+    @GetMapping(path = "/fix/pull-embedding-model", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter pullEmbeddingModel() {
+        SseEmitter emitter = new SseEmitter(0L);
+        Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "diagnostics-pull-embedding-model");
+            t.setDaemon(true);
+            return t;
+        }).submit(() -> streamModelPull(emitter, DiagnosticsService.EMBEDDING_MODEL));
         return emitter;
     }
 
@@ -311,7 +335,7 @@ public class DiagnosticsController {
         }
     }
 
-    private void streamModelPull(SseEmitter emitter) {
+    private void streamModelPull(SseEmitter emitter, String overrideModel) {
         LlmSettings s = SettingsStore.load();
         LlmProvider p = ProviderCatalog.byId(s.activeProvider())
                 .orElseGet(() -> ProviderCatalog.byId(ProviderCatalog.defaultProviderId()).orElseThrow());
@@ -323,7 +347,12 @@ public class DiagnosticsController {
             return;
         }
         String baseUrl = cfg.baseUrl().isBlank() ? p.defaultBaseUrl() : cfg.baseUrl();
-        String model = cfg.model().isBlank() ? p.defaultModel() : cfg.model();
+        // overrideModel lets a caller pin a specific model (e.g. the embedding
+        // model for chat) independently of the active chat-model setting.
+        // Null falls back to whatever the user has configured.
+        String model = (overrideModel != null && !overrideModel.isBlank())
+                ? overrideModel
+                : (cfg.model().isBlank() ? p.defaultModel() : cfg.model());
 
         sendSseStatus(emitter, "starting",
                 "Asking Ollama to download " + model + "…", null);

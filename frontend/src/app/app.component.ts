@@ -1,12 +1,16 @@
-import { Component, HostListener, OnInit, inject, signal } from '@angular/core';
+import { Component, HostListener, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { HeaderComponent } from './features/header/header.component';
 import { SettingsModalComponent } from './features/settings/settings-modal.component';
 import { InboxComponent } from './features/inbox/inbox.component';
 import { WelcomeScreenComponent } from './features/welcome/welcome-screen.component';
 import { HelpOverlayComponent } from './shared/help-overlay/help-overlay.component';
 import { ConfirmDialogComponent } from './shared/confirm-dialog/confirm-dialog.component';
+import { ChatPanelComponent } from './features/chat/chat-panel.component';
+import { UpdateBannerComponent } from './features/header/update-banner.component';
 import { SettingsService } from './core/settings.service';
 import { ShutdownService } from './core/shutdown.service';
+import { ChromeSessionService } from './core/chrome-session.service';
+import { CacheService } from './core/cache.service';
 
 /**
  * Root shell. Header is live (theme + active-LLM pill + ⚙ ? ⏻ buttons).
@@ -18,14 +22,33 @@ import { ShutdownService } from './core/shutdown.service';
   standalone: true,
   imports: [
     HeaderComponent, SettingsModalComponent, InboxComponent, WelcomeScreenComponent,
-    HelpOverlayComponent, ConfirmDialogComponent,
+    HelpOverlayComponent, ConfirmDialogComponent, ChatPanelComponent,
+    UpdateBannerComponent,
   ],
   template: `
     <im-header
       (onSettings)="settingsOpen.set(true)"
       (onHelp)="helpOpen.set(true)"
+      (onClearCache)="clearCacheConfirmOpen.set(true)"
+      (onLogout)="logoutConfirmOpen.set(true)"
       (onQuit)="quitConfirmOpen.set(true)"
     ></im-header>
+    <im-update-banner></im-update-banner>
+
+    <button type="button"
+            class="chat-fab"
+            (click)="toggleChat()"
+            [class.active]="chatOpen()"
+            title="Chat with your inbox (c)">
+      💬
+    </button>
+
+    @if (chatOpen()) {
+      <im-chat-panel
+        (closed)="chatOpen.set(false)"
+        (openEmail)="onChatOpenEmail($event)"
+      ></im-chat-panel>
+    }
 
     @if (stopped()) {
       <main class="stopped">
@@ -57,6 +80,26 @@ import { ShutdownService } from './core/shutdown.service';
         [danger]="true"
         (confirmed)="onQuitConfirmed()"
         (cancelled)="quitConfirmOpen.set(false)"
+      ></im-confirm-dialog>
+    }
+    @if (clearCacheConfirmOpen()) {
+      <im-confirm-dialog
+        title="🗑 Clear all cached AI data?"
+        [message]="clearCacheStatus() || 'This wipes every cached enrichment (summaries, badges, action items, draft replies), every raw scraped body, and every chat search embedding. Gmail credentials are NOT touched. The next time you click ▶ Process, everything is recomputed from scratch (LLM cost re-paid).'"
+        confirmLabel="🗑 Clear cache"
+        [danger]="true"
+        (confirmed)="onClearCacheConfirmed()"
+        (cancelled)="clearCacheConfirmOpen.set(false); clearCacheStatus.set(null)"
+      ></im-confirm-dialog>
+    }
+    @if (logoutConfirmOpen()) {
+      <im-confirm-dialog
+        title="🔒 Log out of Chrome and wipe profile?"
+        [message]="logoutStatus() || 'This closes the attached Chrome window and DELETES every saved password, cookie, autofill entry, cache file, and browsing history for the Intelli-mailbox profile. Next time you launch the app you will be back at Gmail\\'s sign-in screen. Use this before handing the machine over to someone else.'"
+        confirmLabel="🔒 Log out & wipe"
+        [danger]="true"
+        (confirmed)="onLogoutConfirmed()"
+        (cancelled)="logoutConfirmOpen.set(false)"
       ></im-confirm-dialog>
     }
   `,
@@ -104,16 +147,45 @@ import { ShutdownService } from './core/shutdown.service';
       font-size: 0.78rem;
       color: var(--text-primary);
     }
+    .chat-fab {
+      position: fixed;
+      bottom: 22px;
+      right: 22px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: none;
+      background: var(--gradient-brand);
+      color: #ffffff;
+      font-size: 1.4rem;
+      cursor: pointer;
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.30);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      z-index: 55;
+    }
+    .chat-fab:hover { transform: scale(1.06); }
+    .chat-fab.active { transform: scale(0.95); }
   `],
 })
 export class AppComponent implements OnInit {
   private settingsService = inject(SettingsService);
   private shutdownService = inject(ShutdownService);
+  private chromeSessionService = inject(ChromeSessionService);
+  private cacheService = inject(CacheService);
 
   readonly settingsOpen = signal<boolean>(false);
   readonly helpOpen = signal<boolean>(false);
   readonly quitConfirmOpen = signal<boolean>(false);
   readonly stopped = signal<boolean>(false);
+  readonly chatOpen = signal<boolean>(false);
+  readonly logoutConfirmOpen = signal<boolean>(false);
+  /** When logout has completed and we want to show the result message back
+   *  in the confirm dialog before the user dismisses it. Null while idle. */
+  readonly logoutStatus = signal<string | null>(null);
+  readonly clearCacheConfirmOpen = signal<boolean>(false);
+  readonly clearCacheStatus = signal<string | null>(null);
+
+  @ViewChild(ChatPanelComponent) private chatPanel?: ChatPanelComponent;
   /** Welcome-screen → inbox handoff. Stays false until diagnostics pass
    *  (or the user clicks "Start now"); persists for the session so revisiting
    *  doesn't bounce the user back to the system check. */
@@ -127,10 +199,63 @@ export class AppComponent implements OnInit {
     this.systemReady.set(true);
   }
 
+  toggleChat(): void {
+    this.chatOpen.update(v => !v);
+  }
+
+  onChatOpenEmail(id: string): void {
+    // Citation chip → open the inbox row's detail modal. The inbox
+    // component listens for clicks on its own rows; rather than refactor
+    // that into a service, dispatch a synthetic event the inbox can pick
+    // up. The id is the same shape (`"<page>:<idx>"`) it already handles.
+    window.dispatchEvent(new CustomEvent('im:open-email', { detail: { id } }));
+  }
+
   onQuitConfirmed(): void {
     this.quitConfirmOpen.set(false);
     this.shutdownService.fire().subscribe(() => {
       this.stopped.set(true);
+    });
+  }
+
+  onClearCacheConfirmed(): void {
+    this.cacheService.clear().subscribe({
+      next: (resp) => {
+        this.clearCacheStatus.set(resp.message);
+        // Auto-dismiss + reload after 1.5s so the user sees the success
+        // message but lands on a fresh inbox view immediately after.
+        setTimeout(() => {
+          this.clearCacheConfirmOpen.set(false);
+          this.clearCacheStatus.set(null);
+          window.location.reload();
+        }, 1500);
+      },
+      error: (err) => {
+        this.clearCacheStatus.set('Clear failed: ' + (err?.message || 'network error'));
+      },
+    });
+  }
+
+  onLogoutConfirmed(): void {
+    // Close + wipe Chrome, then stop the app — the only way to *truly* zero
+    // out the session is for the JVM to also drop the indexed vector store
+    // we built up while signed in. Without the shutdown, a re-launch finds
+    // wiped Chrome state but still has the prior owner's email summaries
+    // in memory.
+    this.chromeSessionService.logout().subscribe({
+      next: (resp) => {
+        this.logoutStatus.set(resp.message
+          + (resp.ok ? ' Stopping the app now…' : ''));
+        if (resp.ok) {
+          this.shutdownService.fire().subscribe(() => {
+            this.logoutConfirmOpen.set(false);
+            this.stopped.set(true);
+          });
+        }
+      },
+      error: (err) => {
+        this.logoutStatus.set('Logout failed: ' + (err?.message || 'network error'));
+      },
     });
   }
 
@@ -147,10 +272,16 @@ export class AppComponent implements OnInit {
       this.helpOpen.set(true);
       return;
     }
+    if (e.key === 'c' || e.key === 'C') {
+      e.preventDefault();
+      this.toggleChat();
+      return;
+    }
     if (e.key === 'Escape') {
       this.settingsOpen.set(false);
       this.helpOpen.set(false);
       this.quitConfirmOpen.set(false);
+      this.chatOpen.set(false);
     }
   }
 

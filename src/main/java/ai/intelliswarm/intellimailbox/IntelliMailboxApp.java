@@ -188,7 +188,8 @@ public class IntelliMailboxApp {
      */
     @Bean
     CommandLineRunner attachAndAnnounce(ObjectProvider<BrowserTool> browserToolProvider,
-                                        ObjectProvider<BrowserToolProperties> browserPropsProvider) {
+                                        ObjectProvider<BrowserToolProperties> browserPropsProvider,
+                                        ObjectProvider<ai.intelliswarm.intellimailbox.system.ChromeSessionService> sessionProvider) {
         return args -> {
             Path profileDir = Paths.get(
                     System.getProperty("swarmai.tools.browser.user-data-dir",
@@ -219,6 +220,14 @@ public class IntelliMailboxApp {
             browserProps.setMode("attach");
             browserProps.setCdpUrl(chrome.cdpUrl());
             browser.shutdown(); // discard cached state so next call re-inits in attach mode
+
+            // Hand the Chrome handle + profile path to the session service so
+            // /api/chrome/logout can wipe credentials on demand.
+            ai.intelliswarm.intellimailbox.system.ChromeSessionService session =
+                    sessionProvider.getIfAvailable();
+            if (session != null) {
+                session.register(chrome.process(), profileDir, chrome.cdpUrl());
+            }
 
             // No pre-warm navigate. We used to fire one here in a daemon
             // thread, but BrowserTool's `navigate` op ignores `timeout_ms`

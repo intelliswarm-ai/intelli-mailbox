@@ -38,6 +38,13 @@ spring:
           # e.g. mistral:latest (sharper, slower) or llama3.2:3b (similar speed, looser).
           model: ${SPRING_AI_OLLAMA_CHAT_OPTIONS_MODEL:qwen2.5:3b}
           temperature: 0.1
+      embedding:
+        # nomic-embed-text — 768-dim, ~270MB on disk, very fast on CPU. Powers
+        # the inbox vector store behind "chat with your emails" (RAG). Pull once
+        # with: ollama pull nomic-embed-text — if it's not pulled, indexing
+        # logs a warning per email and chat still works on tool calls alone.
+        options:
+          model: ${SPRING_AI_OLLAMA_EMBEDDING_OPTIONS_MODEL:nomic-embed-text}
 
 swarmai:
   workflow:

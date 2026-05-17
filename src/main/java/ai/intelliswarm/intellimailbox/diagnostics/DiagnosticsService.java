@@ -52,6 +52,11 @@ public class DiagnosticsService {
         this.browserToolProvider = browserToolProvider;
     }
 
+    /** Embedding model that powers the chat-with-your-inbox feature when
+     *  the active provider is Ollama. Single source of truth — matches
+     *  application-ollama.yml's spring.ai.ollama.embedding.options.model. */
+    public static final String EMBEDDING_MODEL = "nomic-embed-text";
+
     public List<DiagnosticCheck> runAll() {
         LlmSettings s = SettingsStore.load();
         LlmProvider provider = ProviderCatalog.byId(s.activeProvider())
@@ -62,6 +67,7 @@ public class DiagnosticsService {
         out.add(checkProvider(provider, cfg));
         out.add(checkLlmReachable(provider, cfg));
         out.add(checkLlmModelReady(provider, cfg));
+        out.add(checkEmbeddingModelReady(provider, cfg));
         out.add(checkChromeAttached());
         out.add(checkGmailSignedIn());
         return out;
@@ -212,6 +218,67 @@ public class DiagnosticsService {
             return DiagnosticCheck.warn("llm.model",
                     "Can't tell if the AI model is ready",
                     "Couldn't check Ollama's installed models.",
+                    "This usually clears up once Ollama is running. Re-check after starting it.");
+        }
+    }
+
+    /**
+     * Is the embedding model (nomic-embed-text) pulled? This is required for
+     * "chat with your inbox" semantic search. The chat feature itself still
+     * works with tool calls only when this is missing, so we return {@code warn},
+     * not {@code fail} — the inbox-processing happy path is unaffected.
+     *
+     * <p>Skipped entirely for cloud providers (they manage their own embedding
+     * endpoint or don't need a local one).
+     */
+    private DiagnosticCheck checkEmbeddingModelReady(LlmProvider p, ProviderConfig cfg) {
+        if (p.transport() != LlmTransport.OLLAMA) {
+            return DiagnosticCheck.ok("llm.embedding",
+                    "Chat semantic search model is configured",
+                    "Cloud providers handle embeddings themselves.");
+        }
+        String baseUrl = cfg.baseUrl().isBlank() ? p.defaultBaseUrl() : cfg.baseUrl();
+        try {
+            HttpResponse<String> r = HTTP.send(
+                    HttpRequest.newBuilder()
+                            .uri(URI.create(baseUrl.replaceAll("/+$", "") + "/api/tags"))
+                            .timeout(Duration.ofSeconds(2))
+                            .GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (r.statusCode() / 100 != 2) {
+                return DiagnosticCheck.warn("llm.embedding",
+                        "Can't tell if the chat search model is ready",
+                        "Ollama isn't responding, so we can't list installed models.",
+                        "Get the AI engine running first (check above), then re-check.");
+            }
+            JsonNode root = MAPPER.readTree(r.body());
+            JsonNode arr = root.path("models");
+            if (arr.isArray()) {
+                for (JsonNode m : arr) {
+                    String name = m.path("name").asText("");
+                    // Ollama lists models with their tag, e.g. "nomic-embed-text:latest".
+                    if (name.equalsIgnoreCase(EMBEDDING_MODEL)
+                            || name.toLowerCase().startsWith(EMBEDDING_MODEL.toLowerCase() + ":")) {
+                        return DiagnosticCheck.ok("llm.embedding",
+                                "Chat semantic search is ready",
+                                EMBEDDING_MODEL + " is downloaded.");
+                    }
+                }
+            }
+            return DiagnosticCheck.warn("llm.embedding",
+                    "Chat semantic search model not downloaded",
+                    "The chat feature can answer most questions using tools, but "
+                            + "semantic search across emails (\"anything about Q3?\") "
+                            + "needs " + EMBEDDING_MODEL + " — a small embedding model.",
+                    "We can download it for you — it's about 270 MB, one-time. "
+                            + "After this, future launches start with the chat search "
+                            + "fully working. Click the button below.")
+                    .withFixCommand("ollama pull " + EMBEDDING_MODEL)
+                    .withAutoFix("pull-embedding-model");
+        } catch (Exception e) {
+            return DiagnosticCheck.warn("llm.embedding",
+                    "Can't tell if the chat search model is ready",
+                    "Couldn't reach Ollama to list installed models.",
                     "This usually clears up once Ollama is running. Re-check after starting it.");
         }
     }

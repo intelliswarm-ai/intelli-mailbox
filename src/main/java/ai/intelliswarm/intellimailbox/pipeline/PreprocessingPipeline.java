@@ -105,14 +105,26 @@ public class PreprocessingPipeline {
 
     private volatile boolean shuttingDown = false;
 
+    private final EnrichmentCacheStore cacheStore;
+    private final java.util.concurrent.atomic.AtomicLong dirtyCount =
+            new java.util.concurrent.atomic.AtomicLong(0);
+    private static final long PERSIST_EVERY = 3;
+
     private record EnrichJob(InboxItem item, String body) {}
 
     public PreprocessingPipeline(EmailReader reader,
                                  EnrichmentService enrichment,
-                                 ExcludedSendersService excludedSenders) {
+                                 ExcludedSendersService excludedSenders,
+                                 EnrichmentCacheStore cacheStore) {
         this.reader = reader;
         this.enrichment = enrichment;
         this.excludedSenders = excludedSenders;
+        this.cacheStore = cacheStore;
+        // Restore prior session's work so a restart picks up immediately
+        // without re-paying LLM cost. Bodies are restored too so the
+        // /details endpoint serves the modal without re-scraping.
+        cache.putAll(cacheStore.load());
+        bodyCache.putAll(cacheStore.loadBodies());
         // Boot the enricher loop straight away — it sits on handoff.take() until
         // the reader produces work, so it's safe to start before any items arrive.
         enricherExec.submit(this::enricherLoop);
@@ -123,6 +135,15 @@ public class PreprocessingPipeline {
         shuttingDown = true;
         readerExec.shutdownNow();
         enricherExec.shutdownNow();
+        // Final flush so anything that landed since the last persist is
+        // captured. Cheap on shutdown — at most one disk write.
+        cacheStore.save(snapshot(), Map.copyOf(bodyCache));
+    }
+
+    private void maybePersist() {
+        if (dirtyCount.incrementAndGet() % PERSIST_EVERY == 0) {
+            cacheStore.save(snapshot(), Map.copyOf(bodyCache));
+        }
     }
 
     /**
@@ -155,7 +176,40 @@ public class PreprocessingPipeline {
         // the map are guaranteed to match what the frontend just received.
         lastListingById.clear();
         for (InboxItem it : items) lastListingById.put(it.id(), it);
+
+        // Self-heal stale cache entries: ids are DOM-position based
+        // ("page:idx"), so "1:5" today can point at a different email than
+        // "1:5" yesterday. Any cached entry whose stored subject/sender no
+        // longer match the freshly-scraped InboxItem at the same id is
+        // mixing metadata from two different emails — evict it now so the
+        // SSE replay below doesn't ship garbage to the UI. Body cache is
+        // evicted in lockstep so the email-detail modal doesn't show a
+        // different email's body either.
+        evictDriftedEntries(items);
         return items;
+    }
+
+    /** Walk the freshly-listed items, evict any cached entry where the new
+     *  InboxItem's subject+sender disagree with what we have on file for
+     *  that same id. Persists once at the end if anything changed. */
+    private void evictDriftedEntries(List<InboxItem> items) {
+        int evicted = 0;
+        for (InboxItem item : items) {
+            EnrichedEmail existing = cache.get(item.id());
+            if (existing == null) continue;
+            if (sameEmail(existing.item(), item)) continue;
+            logger.info("Cache drift: id={} was '{}' / '{}', now '{}' / '{}' — evicting",
+                    item.id(),
+                    existing.item() == null ? "?" : existing.item().sender(),
+                    existing.item() == null ? "?" : existing.item().subject(),
+                    item.sender(), item.subject());
+            cache.remove(item.id());
+            bodyCache.remove(item.id());
+            evicted++;
+        }
+        if (evicted > 0) {
+            cacheStore.save(snapshot(), Map.copyOf(bodyCache));
+        }
     }
 
     /** Look up an item from the most recent {@link #refresh(String)} result.
@@ -172,16 +226,54 @@ public class PreprocessingPipeline {
      * by the listing endpoint.
      */
     public int processItems(List<InboxItem> items) {
-        int queued = 0, skipped = 0, alreadyCached = 0;
+        int queued = 0, skipped = 0, alreadyCached = 0, stale = 0;
         for (InboxItem item : items) {
             if (excludedSenders.isExcluded(item.sender())) { skipped++; continue; }
-            if (cache.containsKey(item.id()))             { alreadyCached++; continue; }
+            EnrichedEmail existing = cache.get(item.id());
+            if (existing != null) {
+                // Same id can map to a DIFFERENT email across sessions because
+                // ids are DOM-position based ("page:idx") — when Gmail reorders
+                // or the range changes, "1:5" today may be a wholly different
+                // email than "1:5" yesterday. Detect that here by comparing
+                // the current InboxItem's subject + sender to what we cached,
+                // and evict + re-enqueue when they don't agree.
+                if (sameEmail(existing.item(), item)) {
+                    alreadyCached++;
+                    continue;
+                }
+                stale++;
+                cache.remove(item.id());
+                bodyCache.remove(item.id());
+                logger.info("processItems: id={} drifted — was '{}' / '{}', now '{}' / '{}' — re-enqueueing",
+                        item.id(),
+                        existing.item() == null ? "?" : existing.item().sender(),
+                        existing.item() == null ? "?" : existing.item().subject(),
+                        item.sender(), item.subject());
+            }
             queueEnrichment(item);
             queued++;
         }
-        logger.info("processItems: queued={} skippedExcluded={} alreadyCached={} (total {})",
-                queued, skipped, alreadyCached, items.size());
+        if (stale > 0) {
+            // Persist immediately so we don't restart with the same bad rows.
+            cacheStore.save(snapshot(), Map.copyOf(bodyCache));
+        }
+        logger.info("processItems: queued={} skippedExcluded={} alreadyCached={} staleEvicted={} (total {})",
+                queued, skipped, alreadyCached, stale, items.size());
         return queued;
+    }
+
+    /** Two InboxItems are "the same email" if their subject AND sender both
+     *  match (case-insensitive, whitespace-trimmed). Time and snippet are
+     *  intentionally ignored — Gmail rewrites relative timestamps ("3h ago"
+     *  → "5h ago") on every scrape, and snippets vary with the rendered
+     *  inbox column width. */
+    private static boolean sameEmail(InboxItem a, InboxItem b) {
+        if (a == null || b == null) return false;
+        return normalize(a.subject()).equals(normalize(b.subject()))
+            && normalize(a.sender()).equals(normalize(b.sender()));
+    }
+    private static String normalize(String s) {
+        return s == null ? "" : s.trim().toLowerCase();
     }
 
     /** Force re-enrichment of one row even if cached. */
@@ -193,6 +285,28 @@ public class PreprocessingPipeline {
     public java.util.Optional<EnrichedEmail> getCached(String id) {
         return java.util.Optional.ofNullable(cache.get(id));
     }
+
+    /**
+     * Wipe every cached enrichment + raw body and persist empty files to
+     * disk so the next startup starts clean. Does NOT touch the vector
+     * store — call {@code InboxIndexer.clearVectorStore()} for that.
+     * Returns the counts that were dropped so the UI can show "Cleared 174
+     * enrichments and 174 bodies."
+     */
+    public ClearResult clearCache() {
+        int enrichments = cache.size();
+        int bodies = bodyCache.size();
+        cache.clear();
+        bodyCache.clear();
+        lastListingById.clear();
+        // Persist empty so a restart doesn't restore the just-cleared state.
+        cacheStore.save(java.util.Map.of(), java.util.Map.of());
+        logger.info("PreprocessingPipeline: cache cleared ({} enrichments, {} bodies)",
+                enrichments, bodies);
+        return new ClearResult(enrichments, bodies);
+    }
+
+    public record ClearResult(int enrichments, int bodies) {}
 
     /**
      * Drops every cached enrichment + scraped body whose original sender
@@ -267,7 +381,7 @@ public class PreprocessingPipeline {
         }
         readerExec.submit(() -> {
             try {
-                String body = reader.readEmail(item.id());
+                String body = reader.readEmail(item);
                 // Stash the raw body so the /details endpoint can serve it
                 // without re-scraping when the user opens the modal.
                 if (body != null && !body.isBlank()) {
@@ -318,6 +432,7 @@ public class PreprocessingPipeline {
                         .doOnNext(evt -> {
                             if (evt instanceof PipelineEvent.Enriched e) {
                                 cache.put(job.item.id(), e.email());
+                                maybePersist();
                             }
                             publish(evt);
                         })

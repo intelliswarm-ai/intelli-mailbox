@@ -55,6 +55,14 @@ import { SettingsService } from '../../core/settings.service';
               (click)="onHelp.emit()"
               title="Keyboard shortcuts (?)">?</button>
       <button type="button"
+              class="icon-btn"
+              (click)="onClearCache.emit()"
+              title="Wipe every cached enrichment, scraped body, and chat embedding — does NOT touch Gmail credentials. Use after upgrading or when cached data looks stale.">🗑 Clear cache</button>
+      <button type="button"
+              class="icon-btn warn"
+              (click)="onLogout.emit()"
+              title="Log out of Chrome and wipe every saved password / cookie / cache for this profile. Use before handing the machine over.">🔒 Logout</button>
+      <button type="button"
               class="icon-btn danger"
               (click)="onQuit.emit()"
               title="Stop the Intelli-mailbox app entirely (closes the local server, frees ~310 MB RAM)">⏻ Quit</button>
@@ -209,12 +217,23 @@ import { SettingsService } from '../../core/settings.service';
       color: var(--color-error);
       border-color: var(--color-error);
     }
+    .icon-btn.warn {
+      color: var(--color-warning, #f5b942);
+      border-color: var(--color-warning, #f5b942);
+    }
+    .icon-btn.warn:hover {
+      background: rgba(245, 185, 66, 0.10);
+      color: var(--color-warning, #f5b942);
+      border-color: var(--color-warning, #f5b942);
+    }
   `],
 })
 export class HeaderComponent {
   @Output() onSettings = new EventEmitter<void>();
   @Output() onHelp = new EventEmitter<void>();
   @Output() onQuit = new EventEmitter<void>();
+  @Output() onLogout = new EventEmitter<void>();
+  @Output() onClearCache = new EventEmitter<void>();
 
   private themeService = inject(ThemeService);
   private settingsService = inject(SettingsService);

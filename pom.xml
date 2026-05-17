@@ -9,7 +9,7 @@
     <artifactId>intelli-mailbox</artifactId>
     <!-- Version is the source of truth for the GitHub Release tag — bumping this
          on main triggers .github/workflows/release.yml to publish a new release. -->
-    <version>0.1.3</version>
+    <version>0.1.4</version>
     <packaging>jar</packaging>
 
     <name>Intelli-mailbox</name>
@@ -30,7 +30,12 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.4.4</spring-boot.version>
         <spring-ai.version>1.0.4</spring-ai.version>
-        <swarmai.version>1.0.18</swarmai.version>
+        <!-- 1.0.24 ships HttpClientCompatConfiguration (fixes truncated OpenAI responses
+             under JDK 21 + tool calls), the LlmClient SPI + native Anthropic adapter
+             (prompt caching, extended thinking, inline citations — when on the
+             anthropic profile), and the reliability substrate (ErrorClassifier wired
+             into Agent.callWithRetry). -->
+        <swarmai.version>1.0.24</swarmai.version>
         <!-- Default: production windowed launcher (no cmd window on each click).
              Override with -Djpackage.console=true to produce a console-attached
              launcher for debugging. -->
@@ -386,11 +391,12 @@
                                          minor.patch on the macOS side, i.e.
                                             pom 0.1.2  ->  appVersion 1.1.2
                                             pom 0.1.3  ->  appVersion 1.1.3
+                                            pom 0.1.4  ->  appVersion 1.1.4
                                          so users on macOS / Win / Linux can still read the same
                                          "what version is this?" off the filename. Once the pom
                                          hits 1.0.0+, drop this override and let project.version
                                          flow through. -->
-                                    <appVersion>1.1.2</appVersion>
+                                    <appVersion>1.1.4</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
                                     <description>Intelli Mailbox - AI-preprocessed inbox</description>

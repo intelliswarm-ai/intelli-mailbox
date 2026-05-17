@@ -159,22 +159,28 @@ public class EmailReader {
     }
 
     /**
-     * Opens the email whose DOM-index id was returned by {@link #listInbox()},
-     * scrapes its body, returns to inbox. Synchronized for the same reason as
-     * {@code listInbox} — exclusive Chrome-page access during the click + scrape.
+     * Opens the email at {@code item.position()} (the "page:idx" DOM address
+     * the scrape returned), scrapes its body, returns to inbox. Synchronized
+     * for the same reason as {@code listInbox} — exclusive Chrome-page
+     * access during the click + scrape.
+     *
+     * <p>Note: prior versions took just the {@code id} String and parsed it
+     * as "page:idx". Since the id is now a stable content hash, the DOM
+     * position arrives via the {@link InboxItem#position()} field instead.
      */
-    public synchronized String readEmail(String id) {
-        // ID format is "<page>:<domIdx>" for new ranged listings, or a bare
-        // numeric DOM-index for the default inbox path (legacy).
+    public synchronized String readEmail(InboxItem item) {
+        if (item == null) return "";
+        String position = item.position();
+        if (position == null || position.isBlank()) return "";
         int page = 1;
         int idx;
         try {
-            int colon = id.indexOf(':');
+            int colon = position.indexOf(':');
             if (colon > 0) {
-                page = Integer.parseInt(id.substring(0, colon));
-                idx  = Integer.parseInt(id.substring(colon + 1));
+                page = Integer.parseInt(position.substring(0, colon));
+                idx  = Integer.parseInt(position.substring(colon + 1));
             } else {
-                idx = Integer.parseInt(id);
+                idx = Integer.parseInt(position);
             }
         } catch (NumberFormatException e) {
             return "";
@@ -206,16 +212,52 @@ public class EmailReader {
         browser.execute(Map.of("operation", "evaluate_js",
                 "code", "(() => { document.querySelectorAll('div.adn').forEach(e => e.setAttribute('data-imb-stale','1')); return true; })()"));
 
-        // id IS the raw DOM index — no +1 offset, header was already accounted for
-        // when listInbox skipped row 0.
+        // Click the row that actually IS this email — match by sender+subject,
+        // not by position. Position can drift between listing-scrape time and
+        // read time (e.g. a new email lands and bumps every row down by one).
+        // A pure positional click in that case opens a DIFFERENT email's body
+        // and the LLM enriches the wrong content under the right id — exactly
+        // the bug that produced "Meetup row → Chrysanthy gym drafts". The
+        // positional click is kept as a last-resort fallback.
         String clickJs = String.format(
-                "(() => { const rows = document.querySelectorAll('[role=\"main\"] [role=\"row\"]'); " +
-                "  const target = rows[%d]; if (!target) return false; target.click(); return true; })()",
+                "(() => {" +
+                "  const targetSubj = %s;" +
+                "  const targetSender = %s;" +
+                "  const rows = document.querySelectorAll('[role=\"main\"] [role=\"row\"]');" +
+                "  const norm = s => (s || '').trim().toLowerCase().replace(/\\s+/g, ' ');" +
+                "  let bestMatch = null;" +
+                "  for (let i = 1; i < rows.length; i++) {" +
+                "    const r = rows[i];" +
+                "    const subj = norm(r.querySelector('span.bog')?.innerText);" +
+                "    const sender = norm(r.querySelector('[email]')?.getAttribute('name')" +
+                "                       || r.querySelector('[email]')?.getAttribute('email')" +
+                "                       || r.querySelector('span.bA4')?.innerText);" +
+                "    if (subj === targetSubj && sender === targetSender) {" +
+                "      bestMatch = r; break;" +
+                "    }" +
+                "  }" +
+                "  if (bestMatch) { bestMatch.click(); return 'subject-match'; }" +
+                "  const fallback = rows[%d];" +
+                "  if (!fallback) return 'no-row';" +
+                "  fallback.click(); return 'positional';" +
+                "})()",
+                toJsString(item.subject()),
+                toJsString(item.sender()),
                 idx);
         Object clicked = browser.execute(Map.of("operation", "evaluate_js", "code", clickJs));
-        if (!"true".equals(String.valueOf(clicked))) {
-            logger.warn("EmailReader: couldn't click row domIndex={}", idx);
+        String clickResult = String.valueOf(clicked);
+        if ("no-row".equals(clickResult) || "false".equals(clickResult)) {
+            logger.warn("EmailReader: couldn't click row position={} ({})", idx, clickResult);
             return "";
+        }
+        if ("positional".equals(clickResult)) {
+            // Subject+sender didn't match the listing — the page has reordered
+            // since scrape. We clicked rows[idx] anyway; flag it so callers can
+            // see the drift in the log if the eventual body looks wrong.
+            logger.warn("EmailReader: subject/sender match failed for id={} (subj='{}', sender='{}') — fell back to positional click at {}",
+                    item.id(), excerpt(item.subject(), 60), excerpt(item.sender(), 40), idx);
+        } else {
+            logger.debug("EmailReader: clicked by {} for id={}", clickResult, item.id());
         }
 
         // Poll for a FRESH div.adn (one without the stale marker we just set).
@@ -514,67 +556,181 @@ public class EmailReader {
      * {@link #readEmail(String)} — BrowserTool drives one Chrome page; the
      * web thread calling this must not race against the enrichment worker.
      */
-    public synchronized boolean injectReply(String id, String draftText) {
+    public synchronized boolean injectReply(InboxItem item, String draftText) {
         try {
-            return injectReplyInner(id, draftText);
+            return injectReplyInner(item, draftText);
         } catch (Throwable t) {
             // Any unexpected throw (BrowserTool internals, OOM, etc.) collapses
             // to a clean false — the controller surfaces it to the user as
             // "Gmail DOM didn't respond …" instead of a 500.
             logger.warn("EmailReader.injectReply: unhandled error for id={} ({})",
-                    id, t.toString());
+                    item == null ? "?" : item.id(), t.toString());
             return false;
         }
     }
 
-    private boolean injectReplyInner(String id, String draftText) {
-        int idx;
-        try { idx = Integer.parseInt(id); } catch (NumberFormatException e) { return false; }
+    private boolean injectReplyInner(InboxItem item, String draftText) {
         if (draftText == null || draftText.isBlank()) return false;
+        if (item == null) return false;
+        String position = item.position();
+        if (position == null || position.isBlank()) return false;
 
-        // 1. Click the row to open the email — same DOM-index trick as readEmail.
+        // position is "page:idx" — mirrors readEmail's parsing.
+        int page = 1;
+        int idx;
+        try {
+            int colon = position.indexOf(':');
+            if (colon > 0) {
+                page = Integer.parseInt(position.substring(0, colon));
+                idx  = Integer.parseInt(position.substring(colon + 1));
+            } else {
+                idx = Integer.parseInt(position);
+            }
+        } catch (NumberFormatException e) {
+            return false;
+        }
+
+        // Make sure Chrome is on the same listing/page the id was issued from,
+        // otherwise rows[idx] points at a different email. forceRefresh=false:
+        // we just need to be ON the page, not re-run the search.
+        if (page > 1 || lastRangeQuery != null) {
+            navigateToRangeSearch(lastRangeQuery == null ? "1d" : lastRangeQuery, page, false);
+        } else {
+            ensureOnInboxListing(15_000);
+        }
+
+        // Stale-DOM guard: Gmail keeps previously-opened conversation panels
+        // (their div.adn) in the DOM. Without tagging them first, the next
+        // query — including the Reply-button lookup below — could resolve to
+        // the PREVIOUS email instead of the one we just clicked.
+        browser.execute(Map.of("operation", "evaluate_js",
+                "code", "(() => { document.querySelectorAll('div.adn').forEach(e => e.setAttribute('data-imb-stale','1')); return true; })()"));
+
+        // 1. Click the row that IS this email — match by subject + sender
+        //    first so we open the right one even if the listing reordered
+        //    since the scrape that produced item.position(). Same logic as
+        //    readEmail; see the longer rationale there.
         String clickJs = String.format(
-                "(() => { const rows = document.querySelectorAll('[role=\"main\"] [role=\"row\"]'); " +
-                "  const target = rows[%d]; if (!target) return false; target.click(); return true; })()",
+                "(() => {" +
+                "  const targetSubj = %s;" +
+                "  const targetSender = %s;" +
+                "  const rows = document.querySelectorAll('[role=\"main\"] [role=\"row\"]');" +
+                "  const norm = s => (s || '').trim().toLowerCase().replace(/\\s+/g, ' ');" +
+                "  let bestMatch = null;" +
+                "  for (let i = 1; i < rows.length; i++) {" +
+                "    const r = rows[i];" +
+                "    const subj = norm(r.querySelector('span.bog')?.innerText);" +
+                "    const sender = norm(r.querySelector('[email]')?.getAttribute('name')" +
+                "                       || r.querySelector('[email]')?.getAttribute('email')" +
+                "                       || r.querySelector('span.bA4')?.innerText);" +
+                "    if (subj === targetSubj && sender === targetSender) {" +
+                "      bestMatch = r; break;" +
+                "    }" +
+                "  }" +
+                "  if (bestMatch) { bestMatch.click(); return 'subject-match'; }" +
+                "  const fallback = rows[%d];" +
+                "  if (!fallback) return 'no-row';" +
+                "  fallback.click(); return 'positional';" +
+                "})()",
+                toJsString(item.subject()),
+                toJsString(item.sender()),
                 idx);
         Object clicked = browser.execute(Map.of("operation", "evaluate_js", "code", clickJs));
-        if (!"true".equals(String.valueOf(clicked))) {
-            logger.warn("EmailReader.injectReply: couldn't click row {}", idx);
+        String clickResult = String.valueOf(clicked);
+        if ("no-row".equals(clickResult) || "false".equals(clickResult)) {
+            logger.warn("EmailReader.injectReply: couldn't click row position={} ({})", idx, clickResult);
             return false;
         }
-        try {
-            browser.execute(Map.of("operation", "wait_for",
-                    "selector", "div.adn, [role=\"main\"] [role=\"listitem\"]",
-                    "timeout_ms", 15_000));
-        } catch (Exception e) {
-            logger.warn("EmailReader.injectReply: email body didn't render for row {} ({})",
-                    idx, e.getMessage());
+        if ("positional".equals(clickResult)) {
+            logger.warn("EmailReader.injectReply: subject/sender match failed for id={} — fell back to positional click. "
+                    + "Aborting inject so we don't paste this draft into the wrong reply window.",
+                    item.id());
             return false;
         }
 
-        // 2. Click the inline Reply button. Gmail rotates selectors, so we try
-        //    a small allow-list of variations seen in the wild. We deliberately
-        //    target the bottom-of-thread inline reply (not "Reply all", not the
-        //    overflow menu reply).
+        // Poll for a FRESH div.adn before continuing, so step 2's Reply-button
+        // search resolves inside the new email's wrapper, not a stale one.
+        String pollJs = "(() => { return Array.from(document.querySelectorAll('div.adn'))"
+                + ".some(e => !e.hasAttribute('data-imb-stale')) ? 'ok' : 'pending'; })()";
+        long deadline = System.currentTimeMillis() + 15_000;
+        boolean appeared = false;
+        while (System.currentTimeMillis() < deadline) {
+            Object res = browser.execute(Map.of("operation", "evaluate_js", "code", pollJs));
+            if ("ok".equals(String.valueOf(res))) { appeared = true; break; }
+            try { Thread.sleep(150); } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        if (!appeared) {
+            logger.warn("EmailReader.injectReply: fresh email body didn't appear for row {}", idx);
+            return false;
+        }
+
+        // 2. Click the inline Reply button. Three strategies tried in order
+        //    against (a) the FRESH conversation wrapper, then (b) the whole doc:
+        //      (i)  aria-label patterns (works on English Gmail with the
+        //           standard labels: "Reply", "Reply to message")
+        //      (ii) the inline reply zone ({@code div.amn} / {@code div.aDh})
+        //      (iii) text-content scan over every role=button in the wrapper —
+        //           catches buttons whose aria-label has rotated as long as
+        //           their visible text is still "Reply" (NOT "Reply all").
+        //    Returns a diagnostic string so the warn log says WHICH path
+        //    matched (or which were tried but missed), not just yes/no.
         String replyJs =
                 "(() => {\n" +
+                "  const fresh = Array.from(document.querySelectorAll('div.adn'))\n" +
+                "      .filter(e => !e.hasAttribute('data-imb-stale'));\n" +
+                "  const wrapper = fresh.length > 0 ? fresh[fresh.length - 1] : null;\n" +
+                "  const tried = [];\n" +
                 "  const sels = [\n" +
                 "    'div[role=\"button\"][aria-label^=\"Reply\"][aria-label$=\"message\"]',\n" +
                 "    'div[role=\"button\"][aria-label=\"Reply\"]',\n" +
                 "    'span[role=\"link\"][aria-label^=\"Reply\"]',\n" +
-                "    'div.amn div[role=\"button\"]:not([aria-label*=\"all\"]):not([aria-label*=\"forward\" i])'\n" +
+                "    'div.amn div[role=\"button\"]:not([aria-label*=\"all\" i]):not([aria-label*=\"forward\" i])',\n" +
+                "    'div.aDh div[role=\"button\"]:not([aria-label*=\"all\" i]):not([aria-label*=\"forward\" i])',\n" +
+                "    'div.aH4 div[role=\"button\"]:not([aria-label*=\"all\" i]):not([aria-label*=\"forward\" i])'\n" +
                 "  ];\n" +
                 "  for (const sel of sels) {\n" +
-                "    const btn = document.querySelector(sel);\n" +
-                "    if (btn) { btn.click(); return true; }\n" +
+                "    const scopes = wrapper ? [wrapper, document] : [document];\n" +
+                "    for (const scope of scopes) {\n" +
+                "      const btn = scope.querySelector(sel);\n" +
+                "      if (btn) { btn.click(); return 'ok:aria:' + sel; }\n" +
+                "    }\n" +
+                "    tried.push(sel);\n" +
                 "  }\n" +
-                "  return false;\n" +
+                "  // Text-content scan: every actionable element under the wrapper.\n" +
+                "  // Matches case-insensitively on exact \"reply\" or \"reply (shift+r)\",\n" +
+                "  // and explicitly rejects anything with \"all\" or \"forward\" in either\n" +
+                "  // the label or visible text. Doc-wide as the last resort.\n" +
+                "  const scopes = wrapper ? [wrapper, document.body] : [document.body];\n" +
+                "  for (const scope of scopes) {\n" +
+                "    const cands = scope.querySelectorAll('[role=\"button\"], [role=\"link\"], button');\n" +
+                "    for (const btn of cands) {\n" +
+                "      if (btn.offsetWidth === 0 && btn.offsetHeight === 0) continue;\n" +
+                "      const text = ((btn.textContent || '').trim()).toLowerCase();\n" +
+                "      const al   = ((btn.getAttribute('aria-label') || '').toLowerCase());\n" +
+                "      const isReply = text === 'reply' || al === 'reply'\n" +
+                "                   || /^reply\\s*(\\(|$)/.test(al)\n" +
+                "                   || /^reply\\s*(\\(|$)/.test(text);\n" +
+                "      const isExcluded = text.includes('all') || al.includes('all')\n" +
+                "                      || text.includes('forward') || al.includes('forward');\n" +
+                "      if (isReply && !isExcluded) {\n" +
+                "        btn.click();\n" +
+                "        return 'ok:text:' + (al || text);\n" +
+                "      }\n" +
+                "    }\n" +
+                "  }\n" +
+                "  return 'miss:tried=' + tried.length + ':text-scan-empty';\n" +
                 "})()";
         Object replyClicked = browser.execute(Map.of("operation", "evaluate_js", "code", replyJs));
-        if (!"true".equals(String.valueOf(replyClicked))) {
-            logger.warn("EmailReader.injectReply: couldn't find Reply button for row {}", idx);
+        String result = String.valueOf(replyClicked);
+        if (!result.startsWith("ok:")) {
+            logger.warn("EmailReader.injectReply: couldn't find Reply button for row {} ({})",
+                    idx, result);
             return false;
         }
+        logger.debug("EmailReader.injectReply: Reply path → {}", result);
 
         // 3. Wait for the compose textbox to materialise.
         try {
@@ -586,11 +742,19 @@ public class EmailReader {
             return false;
         }
 
-        // 4. Inject the draft. Use Jackson to JSON-encode the text — handles
-        //    quotes, newlines, unicode without bespoke escaping. We replace
-        //    \n with <br> for the contenteditable, and HTML-escape angle
-        //    brackets so a draft containing literal "<" doesn't smuggle markup
-        //    into Gmail's compose DOM.
+        // 4. Inject the draft. Gmail now enforces Trusted Types — assigning
+        //    a plain string to .innerHTML throws "This document requires
+        //    'TrustedHTML' assignment". So we avoid innerHTML entirely:
+        //      - Primary path: document.execCommand('insertText') after
+        //        clearing the editor. Built-in to contenteditable, dispatches
+        //        the InputEvents Gmail's autosaver subscribes to, gives the
+        //        user a clean Undo step, and is exempt from Trusted Types.
+        //      - Fallback: DOM-API construction (textContent + createElement('br'))
+        //        for browsers/profiles where execCommand returns false. Also
+        //        Trusted-Types-safe because we never touch innerHTML.
+        //
+        //    Jackson serializes the text safely as a JS string literal —
+        //    handles quotes, newlines, unicode without bespoke escaping.
         String jsLiteral;
         try {
             jsLiteral = JSON.writeValueAsString(draftText);
@@ -602,29 +766,52 @@ public class EmailReader {
                   const text = %s;
                   const editor = document.querySelector('div[role="textbox"][aria-label*="Message Body"]')
                               || document.querySelector('div[g_editable="true"][role="textbox"]');
-                  if (!editor) return false;
+                  if (!editor) return 'no-editor';
                   editor.focus();
-                  const html = text
-                      .split('\\n')
-                      .map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
-                      .join('<br>');
-                  editor.innerHTML = html;
-                  // Move caret to the end so the user types at the end if they edit.
-                  const range = document.createRange();
-                  range.selectNodeContents(editor);
-                  range.collapse(false);
-                  const sel = window.getSelection();
-                  sel.removeAllRanges();
-                  sel.addRange(range);
-                  // Trigger Gmail's draft-saver.
-                  editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
-                  return true;
+
+                  // Primary: execCommand-based insert. Selects all current
+                  // content, deletes it, then inserts the draft text.
+                  // execCommand returns false in browsers that have dropped
+                  // it — we fall through to the DOM path in that case.
+                  let used = 'execCommand';
+                  let ok = false;
+                  try {
+                    document.execCommand('selectAll', false, null);
+                    document.execCommand('delete', false, null);
+                    ok = document.execCommand('insertText', false, text);
+                  } catch (e) { ok = false; }
+
+                  if (!ok) {
+                    used = 'dom-api';
+                    // Clear via textContent (Trusted-Types-safe — it's plain text).
+                    editor.textContent = '';
+                    const lines = text.split('\\n');
+                    lines.forEach((line, i) => {
+                      if (i > 0) editor.appendChild(document.createElement('br'));
+                      if (line.length > 0) editor.appendChild(document.createTextNode(line));
+                    });
+                    // Move caret to end so the user types after the inserted text.
+                    const range = document.createRange();
+                    range.selectNodeContents(editor);
+                    range.collapse(false);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    // Fire the input event Gmail listens to for autosave.
+                    editor.dispatchEvent(new InputEvent('input',
+                      { bubbles: true, inputType: 'insertText', data: text }));
+                  }
+                  return 'ok:' + used;
                 })()
                 """.formatted(jsLiteral);
         Object injected = browser.execute(Map.of("operation", "evaluate_js", "code", injectJs));
-        boolean ok = "true".equals(String.valueOf(injected));
+        String injectResult = String.valueOf(injected);
+        boolean ok = injectResult != null && injectResult.startsWith("ok:");
         if (!ok) {
-            logger.warn("EmailReader.injectReply: text injection failed for row {}", idx);
+            logger.warn("EmailReader.injectReply: text injection failed for row {} ({})",
+                    idx, injectResult);
+        } else {
+            logger.debug("EmailReader.injectReply: injected via {}", injectResult);
         }
         // Deliberately DO NOT navigate back to the inbox here — the user needs
         // Chrome to stay on the open compose so they can review and Send.
@@ -639,10 +826,14 @@ public class EmailReader {
             List<InboxItem> out = new ArrayList<>(raw.size());
             for (Map<String, Object> r : raw) {
                 Object dom = r.get("domIndex");
-                String id = dom == null ? "" : dom.toString();
-                if (id.isBlank()) continue;
-                out.add(new InboxItem(
-                        id,
+                String position = dom == null ? "" : dom.toString();
+                if (position.isBlank()) continue;
+                // Stable id derived from sender + subject + snippet so the
+                // same email keeps the same id across listings, sessions,
+                // and Gmail re-orderings. Position is kept separately for
+                // DOM clicks but is no longer the cache key.
+                out.add(InboxItem.from(
+                        position,
                         str(r.get("sender")),
                         str(r.get("subject")),
                         str(r.get("snippet")),
@@ -657,6 +848,22 @@ public class EmailReader {
     }
 
     private static String str(Object o) { return o == null ? "" : o.toString().trim(); }
+
+    /** JSON-encode a Java string as a JS string literal — handles quotes,
+     *  backslashes, newlines, unicode without bespoke escaping. Used for
+     *  splicing user-content fields (subject, sender) into evaluate_js code.
+     *  Returns the literal {@code ""} when serialization fails (defensive;
+     *  the surrounding JS will then mismatch and the click falls back to
+     *  positional, which is still safer than smuggling unescaped text into
+     *  the JS source). The matching logic in JS normalises the same way
+     *  (trim + lowercase + collapse whitespace). */
+    private static String toJsString(String s) {
+        try {
+            return JSON.writeValueAsString(s == null ? "" : s.trim().toLowerCase().replaceAll("\\s+", " "));
+        } catch (Exception e) {
+            return "\"\"";
+        }
+    }
 
     private static String excerpt(String s, int n) {
         if (s == null) return "";

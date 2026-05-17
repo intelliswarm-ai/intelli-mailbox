@@ -252,7 +252,9 @@ public class InboxController {
                 resp.put("reason", tone + " draft is empty");
                 return ResponseEntity.ok(resp);
             }
-            boolean ok = reader.injectReply(id, draft);
+            // Reader needs the full InboxItem now (id is a stable hash; the
+            // DOM position lives in item.position()). Cached entry carries it.
+            boolean ok = reader.injectReply(cached.item(), draft);
             resp.put("ok", ok);
             if (!ok) resp.put("reason", "Gmail DOM didn't respond — selector may have rotated");
             return ResponseEntity.ok(resp);
