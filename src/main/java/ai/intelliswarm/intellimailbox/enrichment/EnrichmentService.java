@@ -156,7 +156,15 @@ public class EnrichmentService {
         }
 
         List<Badge> badges = parseBadges(result.badges);
-        List<Cta> ctas = filterTruthful(normalizeCtas(result.ctas), emailBody);
+        List<Cta> ctas = dropBoilerplateCtas(filterTruthful(normalizeCtas(result.ctas), emailBody));
+        // Hard guard: marketing / automated mail almost never has REAL CTAs
+        // for the recipient — the LLM extracts unsubscribe + privacy-policy
+        // + manage-subscriptions footer links and labels them "actions".
+        // Match the needsReply guard below so the UI doesn't show "do this"
+        // chips for emails that warrant zero human action.
+        if (badges.contains(Badge.NEWSLETTER) || badges.contains(Badge.AUTOMATED)) {
+            ctas = List.of();
+        }
 
         // Hardcoded guards on top of the model's own classification — qwen2.5:3b
         // overcalls needsReply=true on marketing/newsletter mail. If the email is
@@ -295,7 +303,12 @@ public class EnrichmentService {
         }
 
         List<Badge> badges = parseBadges(result.badges);
-        List<Cta> ctas = filterTruthful(normalizeCtas(result.ctas), emailBody);
+        List<Cta> ctas = dropBoilerplateCtas(filterTruthful(normalizeCtas(result.ctas), emailBody));
+        // Mirror the non-streaming path: newsletter / automated mail's
+        // "CTAs" are footer chrome, not actions for the user.
+        if (badges.contains(Badge.NEWSLETTER) || badges.contains(Badge.AUTOMATED)) {
+            ctas = List.of();
+        }
 
         boolean needsReply = Boolean.TRUE.equals(result.needsReply)
                 && !badges.contains(Badge.AUTOMATED)
@@ -398,6 +411,64 @@ public class EnrichmentService {
                         nullToDash(item.snippet()),
                         nullToDash(knownSummary),
                         truncate(emailBody, 4000));
+    }
+
+    /**
+     * Drop CTAs that match the boilerplate footer text every marketing /
+     * newsletter / transactional email tacks on: unsubscribe links,
+     * manage-subscription links, customer-support pointers, privacy /
+     * terms links, and the generic "view in browser" affordance. The LLM
+     * sees these as button labels and labels them "concrete actions" —
+     * but the user already knows they exist and never wants them in their
+     * action queue. Whole-trimmed-line / phrase match (case-insensitive)
+     * so we don't drop a real action that happens to mention "support".
+     *
+     * <p>This is a content-based filter — applied even when the badge
+     * heuristics didn't catch the email as NEWSLETTER. Catches the long
+     * tail of legitimate-looking promotional mail that the badge model
+     * misses.
+     */
+    private static List<Cta> dropBoilerplateCtas(List<Cta> ctas) {
+        if (ctas == null || ctas.isEmpty()) return List.of();
+        // Exact (case-insensitive) matches — the LLM tends to capture these
+        // verbatim because they're rendered as button text in the email.
+        java.util.Set<String> exact = java.util.Set.of(
+                "unsubscribe", "unsubscribe emails", "unsubscribe from this email",
+                "unsubscribe from all marketing emails", "unsubscribe from all emails",
+                "manage subscriptions", "manage email subscriptions",
+                "manage your subscription", "manage your email preferences",
+                "manage notification preferences", "manage your notifications",
+                "email preferences", "notification preferences", "communication preferences",
+                "privacy policy", "terms of service", "terms and conditions",
+                "view privacy policy", "cookie policy",
+                "customer support", "contact support", "contact us", "help center",
+                "view in browser", "view this email in your browser",
+                "view all event details", "view discussion",
+                "open in app", "download the app");
+        // Substring patterns — for slight variations the LLM rephrases.
+        // These are checked WHOLE-text against the CTA's text, then again
+        // as substrings only when the CTA text is short (<60 chars) so we
+        // don't kill a legitimate long sentence containing "unsubscribe".
+        java.util.List<String> substrings = java.util.List.of(
+                "click here to unsubscribe",
+                "manage your email",
+                "stop receiving these emails");
+
+        java.util.List<Cta> out = new java.util.ArrayList<>(ctas.size());
+        for (Cta c : ctas) {
+            String t = c.text() == null ? "" : c.text().trim().toLowerCase();
+            if (t.isEmpty()) continue;
+            if (exact.contains(t)) continue;
+            boolean matched = false;
+            if (t.length() < 60) {
+                for (String s : substrings) {
+                    if (t.contains(s)) { matched = true; break; }
+                }
+            }
+            if (matched) continue;
+            out.add(c);
+        }
+        return out;
     }
 
     /**

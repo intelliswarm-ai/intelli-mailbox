@@ -114,6 +114,13 @@ interface ProviderDraft {
                            (ngModelChange)="debugDraft.set($event)">
                     <span>Debug mode (verbose LLM logs)</span>
                   </label>
+                  <label class="row inline"
+                         title="Lowers Ollama's process priority so it yields CPU to your foreground apps. Recommended on laptops with 8 GB RAM or 4-core CPUs. Email enrichment will be slower.">
+                    <input type="checkbox"
+                           [ngModel]="ollamaBgDraft()"
+                           (ngModelChange)="ollamaBgDraft.set($event)">
+                    <span>Run AI in background mode (lower CPU priority)</span>
+                  </label>
                 </div>
 
                 <p class="settings-path">
@@ -332,6 +339,7 @@ export class SettingsModalComponent implements OnInit {
   readonly draftActiveProvider = signal<string>('');
   readonly languageDraft = signal<string>('');
   readonly debugDraft = signal<boolean>(false);
+  readonly ollamaBgDraft = signal<boolean>(false);
   readonly saving = signal<boolean>(false);
   readonly banner = signal<{ kind: 'info' | 'err'; html: string } | null>(null);
 
@@ -350,6 +358,7 @@ export class SettingsModalComponent implements OnInit {
         this.draftActiveProvider.set(res.activeProvider);
         this.languageDraft.set(res.language);
         this.debugDraft.set(res.debugMode);
+        this.ollamaBgDraft.set(res.ollamaBackgroundPriority);
         // Seed every provider's draft with the server-side config so the masked
         // key sentinel "…" is in place for the inputs.
         const drafts: Record<string, ProviderDraft> = {};
@@ -402,6 +411,7 @@ export class SettingsModalComponent implements OnInit {
       providers: this.providerDrafts(),
       language: this.languageDraft(),
       debugMode: this.debugDraft(),
+      ollamaBackgroundPriority: this.ollamaBgDraft(),
     };
     this.settingsService.save(draft).subscribe({
       next: (res) => {
