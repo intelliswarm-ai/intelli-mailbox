@@ -390,34 +390,55 @@ public class PreprocessingPipeline {
     public void subscribe(Consumer<PipelineEvent> sink) { subscribers.add(sink); }
     public void unsubscribe(Consumer<PipelineEvent> sink) { subscribers.remove(sink); }
 
+    /** Current cache epoch — bumped by {@link #clearCache()}. Downstream
+     *  consumers that queue work off this pipeline's events (e.g. the
+     *  {@code InboxIndexer} embedding worker) capture this value when
+     *  scheduling and re-check before writing back, so a clear that fires
+     *  mid-queue can't be defeated by deferred work. */
+    public long currentEpoch() { return cacheEpoch.get(); }
+
     private void queueEnrichment(InboxItem item) {
         AtomicBoolean lease = inFlight.computeIfAbsent(item.id(), k -> new AtomicBoolean(false));
         if (!lease.compareAndSet(false, true)) {
             return; // already queued/in-flight
         }
+        // Capture the cache epoch HERE, before readEmail starts. A cache
+        // clear that fires while this reader task is in flight bumps the
+        // epoch; every subsequent write (body cache, failure record,
+        // enrichment result) checks against this captured value and skips
+        // when they don't match — so pre-clear work can't repopulate
+        // post-clear state. Capturing inside readerExec (and not at the
+        // outer queueEnrichment call) means the snapshot reflects state
+        // at the moment work actually starts, which is what we want.
         readerExec.submit(() -> {
+            final long jobEpoch = cacheEpoch.get();
             try {
                 String body = reader.readEmail(item);
-                // Stash the raw body so the /details endpoint can serve it
-                // without re-scraping when the user opens the modal.
-                if (body != null && !body.isBlank()) {
+                // Only write the body cache if no clear happened during the
+                // (synchronous, possibly multi-second) readEmail call.
+                if (body != null && !body.isBlank() && jobEpoch == cacheEpoch.get()) {
                     bodyCache.put(item.id(), body);
                 }
                 // Pipeline gate: blocks until the enricher does handoff.take().
                 // While this blocks, EmailReader's monitor is FREE — listInbox
                 // requests from the web thread can proceed normally.
-                // Stamp the job with the current cache epoch so the enricher
-                // can detect a cache clear that happened between scrape + LLM
-                // and skip the result write.
-                handoff.put(new EnrichJob(item, body, cacheEpoch.get()));
+                handoff.put(new EnrichJob(item, body, jobEpoch));
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 lease.set(false);
             } catch (Throwable t) {
                 logger.warn("Reader: read failed for id={}: {}", item.id(), t.toString());
-                EnrichedEmail failed = EnrichedEmail.failed(item, t.getClass().getSimpleName(), 0L);
-                cache.put(item.id(), failed);
-                publish(new PipelineEvent.Enriched(item.id(), failed));
+                // Same guard: don't reintroduce a failure record for work
+                // that started before the user's wipe.
+                if (jobEpoch == cacheEpoch.get()) {
+                    EnrichedEmail failed = EnrichedEmail.failed(item, t.getClass().getSimpleName(), 0L);
+                    cache.put(item.id(), failed);
+                    publish(new PipelineEvent.Enriched(item.id(), failed));
+                } else {
+                    logger.info("Reader: dropping failure record for id={} — "
+                            + "cache cleared mid-read (job epoch {} != current {})",
+                            item.id(), jobEpoch, cacheEpoch.get());
+                }
                 lease.set(false);
             }
         });
@@ -468,9 +489,18 @@ public class PreprocessingPipeline {
                         .blockLast(Duration.ofMinutes(10));
             } catch (Throwable t) {
                 logger.warn("Enricher: LLM failure for id={}: {}", job.item.id(), t.toString());
-                EnrichedEmail failed = EnrichedEmail.failed(job.item, t.getClass().getSimpleName(), 0L);
-                cache.put(job.item.id(), failed);
-                publish(new PipelineEvent.Enriched(job.item.id(), failed));
+                // Same epoch guard as the success path — a failure record from
+                // pre-clear work would still reintroduce state into the wiped
+                // cache. Drop it when the epoch has moved on.
+                if (job.epoch == cacheEpoch.get()) {
+                    EnrichedEmail failed = EnrichedEmail.failed(job.item, t.getClass().getSimpleName(), 0L);
+                    cache.put(job.item.id(), failed);
+                    publish(new PipelineEvent.Enriched(job.item.id(), failed));
+                } else {
+                    logger.info("Enricher: dropping failure record for id={} — "
+                            + "cache cleared mid-flight (job epoch {} != current {})",
+                            job.item.id(), job.epoch, cacheEpoch.get());
+                }
             } finally {
                 AtomicBoolean lease = inFlight.get(job.item.id());
                 if (lease != null) lease.set(false);

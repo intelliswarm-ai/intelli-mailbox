@@ -74,7 +74,13 @@ public class UpdateChecker {
 
     @PostConstruct
     void start() {
-        sched.schedule(this::checkOnce, 30, TimeUnit.SECONDS);
+        // Short initial delay (used to be 30s to stay out of first-paint),
+        // bumped down because the UI's update banner fetches /api/version
+        // once at startup — if the GitHub poll hasn't fired by then the
+        // banner permanently sees "no update available" for the rest of
+        // the session. 3s is plenty of headroom past app boot, and the
+        // GitHub call itself is async + non-blocking.
+        sched.schedule(this::checkOnce, 3, TimeUnit.SECONDS);
         sched.scheduleAtFixedRate(this::checkOnce, 6, 6, TimeUnit.HOURS);
     }
 

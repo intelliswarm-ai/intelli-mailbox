@@ -166,8 +166,21 @@ public class InboxIndexer {
         if (!(event instanceof PipelineEvent.Enriched enriched)) return;
         EnrichedEmail email = enriched.email();
         if (email == null || email.failed()) return;
-        // Off-thread: we are running in the pipeline's publish loop; don't block it.
-        embedExec.submit(() -> index(email));
+        // Capture the pipeline's cache epoch HERE, on the publish thread,
+        // before queueing the embedding task. If /api/cache/clear fires
+        // between this capture and the embedExec task actually running,
+        // the epoch will have moved on and index() will skip the add —
+        // otherwise clearVectorStore() would wipe the store and then this
+        // queued task would re-add the just-cleared vectors moments later.
+        final long jobEpoch = pipeline.currentEpoch();
+        embedExec.submit(() -> {
+            if (jobEpoch != pipeline.currentEpoch()) {
+                logger.debug("InboxIndexer: dropping embed for id={} — cache cleared mid-queue.",
+                        email.item() == null ? "?" : email.item().id());
+                return;
+            }
+            index(email);
+        });
     }
 
     private void index(EnrichedEmail email) {
