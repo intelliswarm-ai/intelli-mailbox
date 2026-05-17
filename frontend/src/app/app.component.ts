@@ -11,6 +11,7 @@ import { SettingsService } from './core/settings.service';
 import { ShutdownService } from './core/shutdown.service';
 import { ChromeSessionService } from './core/chrome-session.service';
 import { CacheService } from './core/cache.service';
+import { EmailOpenerService } from './core/email-opener.service';
 
 /**
  * Root shell. Header is live (theme + active-LLM pill + ⚙ ? ⏻ buttons).
@@ -172,6 +173,7 @@ export class AppComponent implements OnInit {
   private shutdownService = inject(ShutdownService);
   private chromeSessionService = inject(ChromeSessionService);
   private cacheService = inject(CacheService);
+  private emailOpener = inject(EmailOpenerService);
 
   readonly settingsOpen = signal<boolean>(false);
   readonly helpOpen = signal<boolean>(false);
@@ -204,11 +206,9 @@ export class AppComponent implements OnInit {
   }
 
   onChatOpenEmail(id: string): void {
-    // Citation chip → open the inbox row's detail modal. The inbox
-    // component listens for clicks on its own rows; rather than refactor
-    // that into a service, dispatch a synthetic event the inbox can pick
-    // up. The id is the same shape (`"<page>:<idx>"`) it already handles.
-    window.dispatchEvent(new CustomEvent('im:open-email', { detail: { id } }));
+    // Route through the typed EmailOpenerService — inbox component
+    // subscribes to its stream and resolves the id against its items().
+    this.emailOpener.request(id);
   }
 
   onQuitConfirmed(): void {

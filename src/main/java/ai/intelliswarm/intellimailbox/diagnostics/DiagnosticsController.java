@@ -63,6 +63,24 @@ public class DiagnosticsController {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2)).build();
 
+    /** Shared executor for SSE auto-fix streams. Cached pool so concurrent
+     *  fixes (rare — pull-model + install-ollama from the same user) can run
+     *  in parallel, but idle threads time out so we don't leak. The earlier
+     *  per-request {@code Executors.newSingleThreadExecutor(...).submit(...)}
+     *  pattern was creating a fresh executor per click whose worker thread
+     *  was kept alive indefinitely, accumulating daemon threads over the
+     *  app's lifetime. */
+    private static final java.util.concurrent.ExecutorService FIX_EXEC =
+            new java.util.concurrent.ThreadPoolExecutor(
+                    0, Integer.MAX_VALUE,
+                    60L, java.util.concurrent.TimeUnit.SECONDS,
+                    new java.util.concurrent.SynchronousQueue<>(),
+                    r -> {
+                        Thread t = new Thread(r, "diagnostics-fix");
+                        t.setDaemon(true);
+                        return t;
+                    });
+
     private final DiagnosticsService service;
     private final ObjectProvider<BrowserTool> browserToolProvider;
 
@@ -132,11 +150,7 @@ public class DiagnosticsController {
     @GetMapping(path = "/fix/pull-model", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter pullModel() {
         SseEmitter emitter = new SseEmitter(0L);
-        Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "diagnostics-pull-model");
-            t.setDaemon(true);
-            return t;
-        }).submit(() -> streamModelPull(emitter, null /* use chat model from settings */));
+        FIX_EXEC.submit(() -> streamModelPull(emitter, null /* use chat model from settings */));
         return emitter;
     }
 
@@ -146,11 +160,7 @@ public class DiagnosticsController {
     @GetMapping(path = "/fix/pull-embedding-model", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter pullEmbeddingModel() {
         SseEmitter emitter = new SseEmitter(0L);
-        Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "diagnostics-pull-embedding-model");
-            t.setDaemon(true);
-            return t;
-        }).submit(() -> streamModelPull(emitter, DiagnosticsService.EMBEDDING_MODEL));
+        FIX_EXEC.submit(() -> streamModelPull(emitter, DiagnosticsService.EMBEDDING_MODEL));
         return emitter;
     }
 
@@ -165,11 +175,7 @@ public class DiagnosticsController {
     @GetMapping(path = "/fix/install-ollama", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter installOllama() {
         SseEmitter emitter = new SseEmitter(0L);
-        Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "diagnostics-install-ollama");
-            t.setDaemon(true);
-            return t;
-        }).submit(() -> streamOllamaInstall(emitter));
+        FIX_EXEC.submit(() -> streamOllamaInstall(emitter));
         return emitter;
     }
 
@@ -182,11 +188,7 @@ public class DiagnosticsController {
     @GetMapping(path = "/fix/start-ollama", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter startOllama() {
         SseEmitter emitter = new SseEmitter(0L);
-        Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "diagnostics-start-ollama");
-            t.setDaemon(true);
-            return t;
-        }).submit(() -> streamOllamaStart(emitter));
+        FIX_EXEC.submit(() -> streamOllamaStart(emitter));
         return emitter;
     }
 

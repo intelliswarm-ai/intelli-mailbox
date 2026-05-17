@@ -39,8 +39,14 @@ public class ChatService {
 
     private static final int RETRIEVAL_TOP_K = 5;
 
-    /** Find email ids mentioned by the model in its answer. */
-    private static final Pattern ID_PATTERN = Pattern.compile("\\b(\\d+:\\d+)\\b");
+    /** Find email ids mentioned by the model in its answer. Two shapes:
+     *   - new stable content-hash:  16 lowercase hex chars (e.g. {@code 5fdcbf3a7559c912})
+     *   - legacy DOM-position:      {@code 1:3} (kept so older cached answers still link)
+     *  Order matters in the alternation — the hash branch must come first
+     *  so a string like {@code 5fdcbf3a7559c912} isn't half-matched by the
+     *  digit-colon-digit branch. */
+    private static final Pattern ID_PATTERN =
+            Pattern.compile("\\b([a-f0-9]{16}|\\d+:\\d+)\\b");
 
     private final ChatClient chatClient;
     private final SimpleVectorStore vectorStore;

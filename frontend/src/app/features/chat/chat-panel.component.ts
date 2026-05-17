@@ -327,9 +327,11 @@ export class ChatPanelComponent {
   renderText(text: string): string {
     if (!text) return '';
     return text
-      // Match `id=<token>` with surrounding punctuation/whitespace. The id
-      // can be a stable hex hash, a legacy "page:idx", or a bare numeric.
-      .replace(/\s*[\(\[]?\s*\*{0,2}\s*id\s*=\s*[A-Za-z0-9:]+\*{0,2}\s*[\)\]]?\s*[:,.]?\s*/gi, ' ')
+      // Match `id=<token>` with surrounding punctuation/whitespace. Token can
+      // be a stable hex hash (16 chars), a legacy "page:idx", or a bare numeric.
+      // [A-Za-z0-9:-] covers all three; the bracketed group also tolerates
+      // markdown bold (`**id=…**`) the small Ollama models occasionally emit.
+      .replace(/\s*[\(\[]?\s*\*{0,2}\s*id\s*=\s*[A-Za-z0-9:-]+\*{0,2}\s*[\)\]]?\s*[:,.]?\s*/gi, ' ')
       // Collapse the whitespace runs the replacement may leave behind.
       .replace(/[ \t]{2,}/g, ' ')
       .replace(/ +([,.;:!?])/g, '$1')

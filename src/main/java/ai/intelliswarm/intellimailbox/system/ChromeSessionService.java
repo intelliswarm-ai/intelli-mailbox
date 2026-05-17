@@ -92,16 +92,27 @@ public class ChromeSessionService {
         chromeProcess = null;
 
         String message;
+        boolean ok;
         if (failed == 0) {
             message = "Chrome closed and " + deleted + " profile file(s) wiped from "
                     + profileDir + ".";
+            ok = true;
         } else {
-            message = "Chrome closed; wiped " + deleted + " file(s) but " + failed
-                    + " were locked. They will be removed on next app start. "
-                    + "(Profile: " + profileDir + ")";
+            // Credential-bearing files (Login Data, Cookies, Web Data) are the
+            // ones most often locked by a still-alive Chrome process on
+            // Windows. Returning ok=true here would let the frontend shut
+            // the app down despite leaving these files on disk — exactly
+            // the safety failure logout is meant to prevent. Surface as
+            // failure; the UI now shows the message and offers a retry
+            // rather than silently completing.
+            message = "Couldn't fully wipe the profile: " + failed + " file(s) were locked"
+                    + " (Chrome may still be running). Wiped " + deleted + " other file(s)."
+                    + " Quit any remaining Chrome windows for this profile and click Logout"
+                    + " again. Profile: " + profileDir;
+            ok = false;
         }
         logger.info("ChromeSessionService: logout — {}", message);
-        return new LogoutResult(true, message, deleted, failed);
+        return new LogoutResult(ok, message, deleted, failed);
     }
 
     private boolean closeChrome() {
@@ -148,8 +159,13 @@ public class ChromeSessionService {
             HttpResponse<String> resp = client.send(list, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200) return false;
             // Bare regex over the JSON — no need to pull a parser in for this.
+            // CDP target ids are opaque tokens — across Chrome versions they've
+            // been observed as upper-hex (legacy), lower-hex, and UUID-shape
+            // with hyphens. Match all three: [A-Fa-f0-9-]+ with a 6-char floor
+            // to reject obvious noise / "0" / "1" style id fields from other
+            // objects nested in the same JSON document.
             java.util.regex.Matcher m = java.util.regex.Pattern
-                    .compile("\"id\"\\s*:\\s*\"([A-F0-9]+)\"")
+                    .compile("\"id\"\\s*:\\s*\"([A-Fa-f0-9-]{6,})\"")
                     .matcher(resp.body());
             int closed = 0;
             while (m.find()) {

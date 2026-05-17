@@ -8,6 +8,7 @@ import { catchError, map } from 'rxjs/operators';
 import { InboxService } from '../../core/inbox.service';
 import { SseService } from '../../core/sse.service';
 import { ExcludedSendersService } from '../../core/excluded-senders.service';
+import { EmailOpenerService } from '../../core/email-opener.service';
 import {
   ALLOWED_RANGES, EnrichedEmail, InboxItem, RANGE_LABELS, Range, RowStatus,
 } from '../../core/inbox.types';
@@ -309,6 +310,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   private inboxService = inject(InboxService);
   private sseService = inject(SseService);
   private excludedService = inject(ExcludedSendersService);
+  private emailOpener = inject(EmailOpenerService);
 
   private subs = new Subscription();
 
@@ -382,6 +384,12 @@ export class InboxComponent implements OnInit, OnDestroy {
         this.view.set(savedView);
       }
     } catch { /* ignore */ }
+
+    // Chat citation chips → open the matching email's detail modal.
+    // The chat panel doesn't have items() in scope, so it delegates the
+    // resolution to here where the id can be looked up against the
+    // current listing.
+    this.subs.add(this.emailOpener.open$.subscribe((id) => this.openById(id)));
 
     // SSE first so we don't miss enrichment events for rows the pipeline is
     // already processing.
@@ -499,6 +507,22 @@ export class InboxComponent implements OnInit, OnDestroy {
 
   openDetail(item: InboxItem): void {
     this.detailItem.set(item);
+  }
+
+  /** Open the detail modal for the email with the given id, looked up
+   *  against the current listing. Used by chat citation clicks. If the
+   *  id isn't in the visible listing (different range, scrolled off,
+   *  etc.) we log silently rather than crash — the user can refresh
+   *  or change range to see it. */
+  private openById(id: string): void {
+    const match = this.items().find((it) => it.id === id);
+    if (match) {
+      this.detailItem.set(match);
+    }
+    // Else: the chat agent cited an id from the cache that isn't in the
+    // current listing view. Could fetch via /api/email/{id}/details and
+    // build a synthetic InboxItem, but for v1 we silently no-op so
+    // citation clicks never throw.
   }
 
   /** Per-row 🔍 Analyze — same flow as Process all, scoped to one id. */

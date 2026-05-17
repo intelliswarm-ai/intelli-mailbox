@@ -102,23 +102,64 @@ public class InboxIndexer {
     }
 
     /**
-     * Drop every vector currently indexed and persist an empty store. There
-     * is no bulk-delete API on SimpleVectorStore, so we walk pipeline ids
-     * (the only keys the store can have, since this indexer is the sole
-     * writer) and delete each. The persisted file is overwritten by the
-     * subsequent save so the next startup loads zero vectors.
+     * Drop every vector currently indexed and persist an empty store.
+     * Reading ids from the persisted JSON file (not from
+     * {@code pipeline.snapshot()}) ensures we catch orphans — vectors
+     * whose corresponding cache entries were removed by an earlier
+     * migration drop or by a cache wipe ordered after the indexer add.
+     * Without this, {@code /api/cache/clear} would report success while
+     * leaving stale embeddings on disk and in memory.
      */
     public int clearVectorStore() {
-        var snap = pipeline.snapshot();
+        // Union of (a) every id the in-memory store could have and (b) any
+        // ids only present in the persisted file. Reading the file is the
+        // reliable way to enumerate orphans — there's no public list API
+        // on SimpleVectorStore.
+        java.util.Set<String> allIds = new java.util.LinkedHashSet<>();
+        allIds.addAll(pipeline.snapshot().keySet());
+        allIds.addAll(readPersistedIds());
+
         int n = 0;
-        for (String id : snap.keySet()) {
+        for (String id : allIds) {
             try { vectorStore.delete(java.util.List.of(id)); n++; }
             catch (Throwable ignored) { /* not present is fine */ }
+        }
+
+        // Belt-and-braces: even if we missed something via reflection /
+        // file parsing, removing the persisted file means next startup
+        // loads an empty store. The subsequent persistNow() then rewrites
+        // an empty file from the in-memory state we just wiped.
+        java.io.File f = InboxVectorStoreConfig.VECTOR_FILE.toFile();
+        if (f.exists() && !f.delete()) {
+            logger.warn("InboxIndexer: couldn't delete {} ({})", f,
+                    "filesystem permission issue?");
         }
         sinceLastSave.set(0);
         persistNow("manual-clear");
         logger.info("InboxIndexer: vector store cleared ({} ids dropped).", n);
         return n;
+    }
+
+    /** Parse the persisted vector-store JSON to recover every id it holds.
+     *  Returns an empty set on first run (no file) or any parse error —
+     *  callers union this with the snapshot ids for an exhaustive clear. */
+    private java.util.Set<String> readPersistedIds() {
+        java.io.File f = InboxVectorStoreConfig.VECTOR_FILE.toFile();
+        if (!f.isFile() || f.length() == 0) return java.util.Set.of();
+        try {
+            // SimpleVectorStore's on-disk shape is a flat
+            // { "<id>": { ... }, "<id2>": { ... } } JSON object —
+            // the keys are exactly the document ids.
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(f);
+            if (root == null || !root.isObject()) return java.util.Set.of();
+            java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+            root.fieldNames().forEachRemaining(out::add);
+            return out;
+        } catch (Exception e) {
+            logger.debug("InboxIndexer: couldn't read persisted ids ({})", e.toString());
+            return java.util.Set.of();
+        }
     }
 
     private void onEvent(PipelineEvent event) {

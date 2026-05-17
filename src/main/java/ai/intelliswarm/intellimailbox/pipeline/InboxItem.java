@@ -31,7 +31,7 @@ public record InboxItem(
     public static InboxItem from(String position, String sender, String subject,
                                   String snippet, String time) {
         return new InboxItem(
-                stableIdOf(sender, subject, snippet),
+                stableIdOf(sender, subject, snippet, time),
                 position == null ? "" : position,
                 sender == null ? "" : sender,
                 subject == null ? "" : subject,
@@ -40,18 +40,31 @@ public record InboxItem(
     }
 
     /**
-     * Derive a stable id from the three fields that survive Gmail re-renders.
-     * SHA-1 truncated to 16 hex chars gives ~64 bits of address space — collision
-     * probability is negligible for inbox-scale data (low thousands of emails).
+     * Derive a stable id from the four fields that uniquely identify an
+     * inbox row. SHA-1 truncated to 16 hex chars gives ~64 bits of address
+     * space — collision probability is negligible for inbox-scale data.
      *
-     * <p>Why not include {@code time}: Gmail rewrites relative timestamps
-     * ({@code "3 hours ago"} → {@code "Today"} → {@code "Apr 30"}) so it isn't
-     * stable across days. Snippet is the strongest disambiguator we have at
-     * scrape time — two newsletter issues from the same sender with the same
-     * subject will have different snippets (different body previews).
+     * <p>Why include {@code time}: without it, repeated identical
+     * notifications (e.g. a daily {@code AWS Billing — Daily summary}
+     * email whose preview is always {@code "Your usage for ..."}) would
+     * collide on sender+subject+snippet alone — the second email's
+     * enrichment would silently overwrite the first in the cache. The
+     * time field disambiguates them because Gmail's listing always shows
+     * a different time per message.
+     *
+     * <p>Trade-off documented: Gmail rewrites relative timestamps
+     * ({@code "3 hours ago"} → {@code "Today"} → {@code "Apr 30"}), so a
+     * given email's id can change once its rendered time flips into the
+     * next bucket. {@code PreprocessingPipeline.refresh()} detects this
+     * via {@code evictDriftedEntries} and evicts the orphan; net effect
+     * is at most one redundant re-enrichment per email-per-time-bucket-flip.
+     * Better than silent overwrite-collisions, which the previous formula
+     * had on every repeat notification.
      */
-    public static String stableIdOf(String sender, String subject, String snippet) {
-        String input = norm(sender) + "|" + norm(subject) + "|" + norm(snippet);
+    public static String stableIdOf(String sender, String subject,
+                                     String snippet, String time) {
+        String input = norm(sender) + "|" + norm(subject)
+                     + "|" + norm(snippet) + "|" + norm(time);
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
             byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));

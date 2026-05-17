@@ -110,7 +110,16 @@ public class PreprocessingPipeline {
             new java.util.concurrent.atomic.AtomicLong(0);
     private static final long PERSIST_EVERY = 3;
 
-    private record EnrichJob(InboxItem item, String body) {}
+    /** Monotonic epoch — bumped by {@link #clearCache()} so any
+     *  in-flight reader/enricher work captured under a prior epoch
+     *  can detect the wipe and skip writing back. Without this, a
+     *  user-initiated clear during processing would silently
+     *  re-populate the cache when the long-running LLM call completes,
+     *  violating the endpoint's "wipe all" contract. */
+    private final java.util.concurrent.atomic.AtomicLong cacheEpoch =
+            new java.util.concurrent.atomic.AtomicLong(0);
+
+    private record EnrichJob(InboxItem item, String body, long epoch) {}
 
     public PreprocessingPipeline(EmailReader reader,
                                  EnrichmentService enrichment,
@@ -296,13 +305,20 @@ public class PreprocessingPipeline {
     public ClearResult clearCache() {
         int enrichments = cache.size();
         int bodies = bodyCache.size();
+        // Bump the epoch FIRST — any reader/enricher work already in flight
+        // captured the previous epoch and will now skip its cache write when
+        // it eventually completes (see enricherLoop). Bumping before clearing
+        // the maps means there's no window where the enricher could observe
+        // an unchanged epoch AND an empty cache.
+        long newEpoch = cacheEpoch.incrementAndGet();
         cache.clear();
         bodyCache.clear();
         lastListingById.clear();
+        inFlight.clear(); // drop leases so a fresh enqueue of the same id isn't deduped
         // Persist empty so a restart doesn't restore the just-cleared state.
         cacheStore.save(java.util.Map.of(), java.util.Map.of());
-        logger.info("PreprocessingPipeline: cache cleared ({} enrichments, {} bodies)",
-                enrichments, bodies);
+        logger.info("PreprocessingPipeline: cache cleared ({} enrichments, {} bodies, epoch={})",
+                enrichments, bodies, newEpoch);
         return new ClearResult(enrichments, bodies);
     }
 
@@ -390,7 +406,10 @@ public class PreprocessingPipeline {
                 // Pipeline gate: blocks until the enricher does handoff.take().
                 // While this blocks, EmailReader's monitor is FREE — listInbox
                 // requests from the web thread can proceed normally.
-                handoff.put(new EnrichJob(item, body));
+                // Stamp the job with the current cache epoch so the enricher
+                // can detect a cache clear that happened between scrape + LLM
+                // and skip the result write.
+                handoff.put(new EnrichJob(item, body, cacheEpoch.get()));
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 lease.set(false);
@@ -431,6 +450,16 @@ public class PreprocessingPipeline {
                 enrichment.enrichStreaming(job.item, job.body)
                         .doOnNext(evt -> {
                             if (evt instanceof PipelineEvent.Enriched e) {
+                                // If the cache was cleared while we were running
+                                // the LLM, the user expects no residue — drop
+                                // this result on the floor instead of recreating
+                                // a freshly-wiped entry.
+                                if (job.epoch != cacheEpoch.get()) {
+                                    logger.info("Enricher: dropping result for id={} — "
+                                            + "cache was cleared mid-flight (job epoch {} != current {})",
+                                            job.item.id(), job.epoch, cacheEpoch.get());
+                                    return;
+                                }
                                 cache.put(job.item.id(), e.email());
                                 maybePersist();
                             }
