@@ -120,65 +120,100 @@ public class ChatService {
         return """
                 You are the user's email copilot inside Intelli-mailbox.
 
-                Available tools (Spring AI shows you the full signatures separately —
-                this is a calibration hint, not the canonical list):
-                  - findEmailsFromSender(sender, onlyWithActions)
-                        — case-insensitive substring on sender. USE FIRST whenever
-                          the user names a person, company, or domain. Covers both
-                          "anything to do from X" (set onlyWithActions=true) and
-                          "summarize emails from X" (set false, then synthesize).
-                  - searchBySubject(keyword)  — substring match on subject line
-                                                 (faster + no embeddings needed)
-                  - searchInbox(query)        — semantic match (needs the embedding model)
+                === ANTI-HALLUCINATION RULES (highest priority) ===
+                  1. Ground EVERY factual claim in a tool result or the retrieved
+                     context below. If a fact (sender name, subject, date, amount,
+                     person, quote, deadline) is not present in tool output or
+                     context, you MUST NOT include it.
+                  2. NEVER invent an email id. Only cite ids that the tools you
+                     called actually returned (or that appear in the retrieved
+                     context below). The UI will silently drop unknown ids.
+                  3. NEVER paraphrase email content beyond what the tool's
+                     returned 'summary' field literally says. If the user asks
+                     for detail you don't have, call getEmailById(id) — don't
+                     guess from the subject.
+                  4. "I don't have that information" is a valid answer. Saying
+                     it is BETTER than fabricating something plausible. When
+                     tool results are empty, say so plainly and suggest the
+                     user process more of the inbox.
+                  5. Never invent senders, dates, amounts, links, or quotes
+                     that aren't in tool output. No exceptions.
+
+                === TOOLS ===
+                Available tools (Spring AI shows you full signatures separately):
+                  - findEmailsFromSender(sender, onlyWithActions, limit)
+                        — substring on sender. USE FIRST when the user names
+                          a person, company, or domain. Covers both "anything
+                          to do from X" (onlyWithActions=true) and "summarize
+                          emails from X" (false → synthesize from results).
+                  - searchBySubject(keyword)  — substring match on subject
+                  - searchInbox(query)        — semantic match (needs embedding model)
                   - getEmailById(id)          — full enrichment for one email
-                  - listByBadge(badge)        — MEETING / RISK / EXTERNAL / AUTOMATED /
-                                                 VIP / FOLLOW_UP / NEWSLETTER / FINANCE
-                  - listAllActionItems()      — EVERY cached CTA (use by default when
-                                                 the user asks about action items)
-                  - listEmailsNeedingReply()  — emails the model flagged needsReply=true
-                  - listOverdueActions()      — only CTAs with a past-or-today due date
-                                                 (most CTAs have NO due date, so this is
-                                                 often empty — don't conclude from emptiness
-                                                 that there are no action items at all)
+                  - listByBadge(badge)        — MEETING / RISK / EXTERNAL /
+                                                 AUTOMATED / VIP / FOLLOW_UP /
+                                                 NEWSLETTER / FINANCE
+                  - listAllActionItems(limit) — EVERY cached CTA — USE FOR
+                                                 "what do I need to do?" by default
+                  - listEmailsNeedingReply(limit) — emails flagged needsReply=true
+                  - listOverdueActions()      — only CTAs with past-or-today due date
+                                                 (most CTAs have NO due date, so empty
+                                                 result ≠ no action items overall)
                   - listFlaggedPhishing()     — suspected phishing / risky emails
                   - topSenders(limit)         — sender activity overview
                   - inboxOverview()           — counts: indexed / with_action_items /
                                                  needs_reply / suspected_phishing
 
-                Rules:
-                  - Always cite emails by their id in your answer using the format id=<value>
-                    so the UI can link them. Never invent ids.
-                  - If you don't know something, call a tool — don't guess.
-                  - Prefer the retrieved context when it already answers the question; only call
-                    tools when the context is insufficient. The retrieval may be empty if the
-                    embedding model isn't pulled yet — in that case go straight to tools.
-                  - For "what do I need to do" / "explain the action items", use
-                    listAllActionItems(). Only use listOverdueActions() when the user
-                    explicitly mentions deadlines or overdue.
-                  - Keep answers short and concrete. Bullet lists when listing several emails.
-                  - Never include the email body verbatim if a one-sentence summary works.
+                === STYLE ===
+                  - Cite emails inline with id=<value> so the UI can link them.
+                  - Keep answers short and concrete. Bullet lists for >2 emails.
+                  - Never include the email body verbatim if a one-sentence
+                    summary works.
 
-                RETRIEVED CONTEXT (top matches for this message):
+                === RETRIEVED CONTEXT (top matches for this message) ===
                 %s
                 """.formatted(context);
     }
 
+    /**
+     * Strict citation extraction: an id is returned ONLY if it resolves to
+     * a real cached email. Any id the model emitted that doesn't exist in
+     * the cache is treated as a hallucination — counted, logged, and not
+     * surfaced to the UI. This is the structural guarantee behind the
+     * "all information should be factual" promise: the user can never see
+     * a clickable chip for an email that doesn't exist.
+     *
+     * <p>Note that this can't catch every hallucination — the model can
+     * still make a false claim while citing a real id ("Acme said your
+     * invoice is overdue" when the Acme email actually said the opposite).
+     * Stronger factuality would need a second-pass verification call,
+     * which is deferred. What this does catch: invented id strings,
+     * stale ids from a prior session that aren't in the cache anymore,
+     * and the small-model habit of recycling tokens that look like ids
+     * (rare with the hash format, common with the legacy "1:5" form).
+     */
     private List<CitedEmail> extractCitations(String answer) {
         if (answer == null || answer.isEmpty()) return List.of();
         Matcher m = ID_PATTERN.matcher(answer);
         Set<String> seen = new LinkedHashSet<>();
         List<CitedEmail> out = new ArrayList<>();
+        int unresolved = 0;
         while (m.find()) {
             String id = m.group(1);
             if (!seen.add(id)) continue;
             EnrichedEmail e = pipeline.getCached(id).orElse(null);
             if (e == null || e.item() == null) {
-                out.add(new CitedEmail(id, "", ""));
-            } else {
-                out.add(new CitedEmail(id,
-                        nullSafe(e.item().sender()),
-                        nullSafe(e.item().subject())));
+                unresolved++;
+                continue; // drop hallucinated ids — never surface to the UI
             }
+            out.add(new CitedEmail(id,
+                    nullSafe(e.item().sender()),
+                    nullSafe(e.item().subject())));
+        }
+        if (unresolved > 0) {
+            // Visibility into how often the model invents ids — informs both
+            // user trust calibration and any future decision to swap models.
+            logger.warn("ChatService: dropped {} unresolved id citation(s) — "
+                    + "model referenced emails not in the cache.", unresolved);
         }
         return out;
     }
