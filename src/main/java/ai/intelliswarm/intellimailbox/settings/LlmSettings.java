@@ -27,7 +27,17 @@ public record LlmSettings(
          * AI received). UI-only — has no effect on enrichment. Off by default
          * because power-user surface.
          */
-        boolean debugMode
+        boolean debugMode,
+        /**
+         * When {@code true}, the app lowers Ollama's process priority on
+         * startup (and launches it with low priority when started via the
+         * "Start Ollama for me" autofix). Trades enrichment throughput for
+         * foreground responsiveness on low-end laptops — recommended for
+         * machines with 4-core CPUs or 8 GB RAM where Ollama otherwise
+         * makes Chrome / the OS unusable while a model is generating.
+         * Off by default to preserve the existing performance baseline.
+         */
+        boolean ollamaBackgroundPriority
 ) {
     /** Backwards-compatible canonical constructor: default language to "auto" when null/blank. */
     public LlmSettings {
@@ -39,6 +49,7 @@ public record LlmSettings(
                 ProviderCatalog.defaultProviderId(),
                 ProviderCatalog.emptyConfigs(),
                 "auto",
+                false,
                 false
         );
     }

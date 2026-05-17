@@ -58,7 +58,8 @@ public final class SettingsStore {
             String active = (parsed.activeProvider() == null || parsed.activeProvider().isBlank())
                     ? ProviderCatalog.defaultProviderId()
                     : parsed.activeProvider();
-            return new LlmSettings(active, merged, parsed.language(), parsed.debugMode());
+            return new LlmSettings(active, merged, parsed.language(),
+                    parsed.debugMode(), parsed.ollamaBackgroundPriority());
         } catch (IOException e) {
             logger.warn("Failed to read {} — falling back to defaults: {}", SETTINGS_PATH, e.toString());
             return LlmSettings.defaults();

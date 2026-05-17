@@ -57,6 +57,7 @@ export interface SettingsResponse {
   language: string;
   languageCatalog: LanguageOption[];
   debugMode: boolean;
+  ollamaBackgroundPriority: boolean;
   settingsPath: string;
   activeProfile: string;
   system: Record<string, unknown>;
@@ -74,6 +75,7 @@ export interface SaveDraft {
   providers: Record<string, { baseUrl: string; model: string; apiKey: string }>;
   language: string;
   debugMode: boolean;
+  ollamaBackgroundPriority: boolean;
 }
 
 export interface SaveResponse {

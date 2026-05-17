@@ -50,6 +50,12 @@ public class SettingsController {
     /** Sentinel the UI sends back when the user didn't edit the masked api-key field. */
     private static final String KEY_MASK_GLYPH = "…";
 
+    private final ai.intelliswarm.intellimailbox.system.OllamaPriorityService priorityService;
+
+    public SettingsController(ai.intelliswarm.intellimailbox.system.OllamaPriorityService priorityService) {
+        this.priorityService = priorityService;
+    }
+
     @GetMapping
     public Map<String, Object> get() {
         LlmSettings s = SettingsStore.load();
@@ -96,6 +102,7 @@ public class SettingsController {
         out.put("language", s.language());
         out.put("languageCatalog", LANGUAGE_CATALOG);
         out.put("debugMode", s.debugMode());
+        out.put("ollamaBackgroundPriority", s.ollamaBackgroundPriority());
         out.put("settingsPath", SettingsStore.path().toString());
         out.put("activeProfile", System.getProperty("spring.profiles.active", "ollama"));
         out.put("system", SystemInfo.snapshot());
@@ -173,8 +180,29 @@ public class SettingsController {
             if (rawDebug instanceof Boolean b) debugMode = b;
             else if (rawDebug instanceof String s2) debugMode = "true".equalsIgnoreCase(s2.trim()) || "1".equals(s2.trim());
 
-            LlmSettings saved = new LlmSettings(activeProvider, next, language, debugMode);
+            // Ollama background-priority mode — same coercion rules.
+            boolean ollamaBg = current.ollamaBackgroundPriority();
+            Object rawBg = body.get("ollamaBackgroundPriority");
+            if (rawBg instanceof Boolean b2) ollamaBg = b2;
+            else if (rawBg instanceof String s3) ollamaBg = "true".equalsIgnoreCase(s3.trim()) || "1".equals(s3.trim());
+
+            LlmSettings saved = new LlmSettings(activeProvider, next, language, debugMode, ollamaBg);
             SettingsStore.save(saved);
+            // Apply the priority change immediately on EITHER edge — turning
+            // on lowers, turning off restores to Normal. Without the restore
+            // path, users who flipped the toggle on once would see Ollama
+            // stuck at BelowNormal forever (priority changes survive across
+            // app restarts because they live on the OS-process, not in our
+            // memory). Best-effort: log and continue if the OS call fails.
+            if (ollamaBg && !current.ollamaBackgroundPriority()) {
+                ai.intelliswarm.intellimailbox.system.OllamaPriorityService.Result r =
+                        priorityService.lowerPriorityNow();
+                logger.info("Settings: ollamaBackgroundPriority enabled → {}", r);
+            } else if (!ollamaBg && current.ollamaBackgroundPriority()) {
+                ai.intelliswarm.intellimailbox.system.OllamaPriorityService.Result r =
+                        priorityService.restoreNormalPriority();
+                logger.info("Settings: ollamaBackgroundPriority disabled → {}", r);
+            }
             // Language is the one setting that takes effect immediately —
             // EnrichmentService reads it via System.getProperty on every prompt
             // build, so updating the system property here means the next email

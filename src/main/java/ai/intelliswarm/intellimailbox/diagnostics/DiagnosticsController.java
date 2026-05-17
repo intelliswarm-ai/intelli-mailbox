@@ -83,9 +83,12 @@ public class DiagnosticsController {
 
     private final DiagnosticsService service;
     private final ObjectProvider<BrowserTool> browserToolProvider;
+    private final ai.intelliswarm.intellimailbox.system.OllamaPriorityService priorityService;
 
     public DiagnosticsController(DiagnosticsService service,
-                                 ObjectProvider<BrowserTool> browserToolProvider) {
+                                 ObjectProvider<BrowserTool> browserToolProvider,
+                                 ai.intelliswarm.intellimailbox.system.OllamaPriorityService priorityService) {
+        this.priorityService = priorityService;
         this.service = service;
         this.browserToolProvider = browserToolProvider;
     }
@@ -192,6 +195,20 @@ public class DiagnosticsController {
         return emitter;
     }
 
+    /** Apply background-priority to whatever ollama process is currently
+     *  running. Useful right after flipping the Settings toggle so the
+     *  user gets the calmer behaviour without restarting the app. */
+    @PostMapping(path = "/fix/ollama-renice")
+    public ResponseEntity<Map<String, Object>> reniceOllama() {
+        ai.intelliswarm.intellimailbox.system.OllamaPriorityService.Result r =
+                priorityService.lowerPriorityNow();
+        java.util.HashMap<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("ok", r.ok());
+        out.put("processesReniced", r.processesReniced());
+        out.put("message", r.message());
+        return ResponseEntity.ok(out);
+    }
+
     private void streamOllamaStart(SseEmitter e) {
         if (!commandAvailable("ollama")) {
             sendSseStatus(e, "error",
@@ -203,10 +220,22 @@ public class DiagnosticsController {
         }
         sendSseStatus(e, "starting", "Launching Ollama in the background…", null);
         try {
-            ProcessBuilder pb = new ProcessBuilder("ollama", "serve");
+            // If background-priority mode is on, prepend the OS-specific
+            // low-priority launcher (nice / start /belownormal). Otherwise
+            // launch at normal priority. Either way the daemon detaches and
+            // outlives this process — we just choose its initial nice class.
+            java.util.List<String> prefix = priorityService.lowPriorityPrefix();
+            java.util.List<String> command = new java.util.ArrayList<>();
+            if (prefix != null) command.addAll(prefix);
+            command.add("ollama"); command.add("serve");
+            ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             pb.start(); // fire-and-forget — the daemon runs until the user logs out / shuts down
+            if (prefix != null) {
+                sendSseStatus(e, "progress",
+                        "Launched with reduced priority (background mode).", null);
+            }
 
             LlmSettings s = SettingsStore.load();
             LlmProvider p = ProviderCatalog.byId(s.activeProvider())
