@@ -45,12 +45,19 @@ public class OllamaPriorityService {
 
     @PostConstruct
     void applyOnStartup() {
-        if (!SettingsStore.load().ollamaBackgroundPriority()) {
-            logger.debug("OllamaPriorityService: background-priority mode is OFF — no action.");
-            return;
-        }
-        Result r = lowerPriorityNow();
-        logger.info("OllamaPriorityService: startup renice → {}", r);
+        // Converge to whatever the persisted setting says, regardless of
+        // what state Ollama was left in by a previous session.
+        //   setting=true  → ensure Ollama is at BelowNormal
+        //   setting=false → ensure Ollama is at Normal (undoing any
+        //                   BelowNormal a previous session set)
+        // Without the restore branch, a user who flipped the toggle on
+        // once would see Ollama stuck at BelowNormal forever — the only
+        // path back to Normal would be restarting Ollama or running the
+        // setpriority command manually.
+        boolean want = SettingsStore.load().ollamaBackgroundPriority();
+        Result r = want ? lowerPriorityNow() : restoreNormalPriority();
+        logger.info("OllamaPriorityService: startup {} → {}",
+                want ? "lower" : "restore", r);
     }
 
     /** Find every running Ollama process and drop its priority. Returns
