@@ -103,7 +103,11 @@ interface ChatTurn {
       position: fixed;
       top: 0; right: 0; bottom: 0;
       width: min(440px, 100vw);
-      background: var(--bg-card);
+      /* Use the modal/opaque surface — --bg-card is a translucent
+       * gradient that fades to fully transparent at the bottom, which
+       * worked fine inline in the inbox stream but let email rows
+       * bleed through here because the dock is an overlay (issue #10). */
+      background: var(--bg-modal);
       border-left: 1px solid var(--border-section);
       box-shadow: -8px 0 32px rgba(0, 0, 0, 0.28);
       display: flex; flex-direction: column;

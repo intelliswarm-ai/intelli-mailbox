@@ -10,6 +10,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 import java.net.ServerSocket;
@@ -183,10 +184,53 @@ public class IntelliMailboxApp {
     }
 
     /**
+     * Poll {@code /api/health} on the running embedded server until it returns
+     * 2xx, then return. The bound port alone isn't a sufficient signal:
+     * Tomcat accepts connections as soon as it's started, but Spring MVC's
+     * DispatcherServlet initializes lazily on the first request, and the
+     * @RestController beans behind /api/* are only routable after that init
+     * completes. Hitting /api/health here forces that init synchronously
+     * before Chrome is pointed at the UI, so the first JS calls land on a
+     * fully wired backend.
+     */
+    private static void waitForBackendReady(String uiUrl, long timeoutMs) {
+        URI healthUri;
+        try {
+            healthUri = URI.create(uiUrl).resolve("/api/health");
+        } catch (IllegalArgumentException e) {
+            return; // malformed URL — skip the wait rather than block startup
+        }
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(1)).build();
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(healthUri).timeout(Duration.ofSeconds(2)).GET().build();
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                HttpResponse<Void> r = client.send(req, HttpResponse.BodyHandlers.discarding());
+                if (r.statusCode() / 100 == 2) return;
+            } catch (Exception ignored) {
+                // not yet ready — fall through and retry
+            }
+            try { Thread.sleep(200); } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt(); return;
+            }
+        }
+        logger.warn("Backend health check didn't pass within {}ms — opening browser anyway.", timeoutMs);
+    }
+
+    /**
      * Run after Spring is up: bring up the attached Chrome, reconfigure BrowserTool,
      * pre-warm the Gmail tab, and open the IntelliMailbox UI in that same Chrome.
+     *
+     * <p>Gated by {@code intellimailbox.launcher.enabled} (default {@code true}
+     * via {@code matchIfMissing}) so slice tests can disable the Chrome /
+     * readiness probe flow without re-creating it as a no-op. Production
+     * launches are unaffected.
      */
     @Bean
+    @ConditionalOnProperty(name = "intellimailbox.launcher.enabled",
+            havingValue = "true", matchIfMissing = true)
     CommandLineRunner attachAndAnnounce(ObjectProvider<BrowserTool> browserToolProvider,
                                         ObjectProvider<BrowserToolProperties> browserPropsProvider,
                                         ObjectProvider<ai.intelliswarm.intellimailbox.system.ChromeSessionService> sessionProvider) {
@@ -197,6 +241,13 @@ public class IntelliMailboxApp {
                                     ".intelliswarm", "intellimailbox-chrome").toString()));
 
             String uiUrl = "http://localhost:" + System.getProperty("server.port", "8090") + "/";
+
+            // Block until /api/health answers 200 before handing the URL to
+            // Chrome. Without this, Chrome can race the DispatcherServlet's
+            // first-request init: the static welcome page loads, the JS fires
+            // /api/inbox before any controller is wired, and the UI looks
+            // permanently broken until the user refreshes ~30s later.
+            waitForBackendReady(uiUrl, 30_000);
 
             RealChromeLauncher.LaunchResult chrome;
             try {

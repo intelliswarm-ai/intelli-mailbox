@@ -34,6 +34,12 @@ public class VersionController {
         out.put("latest", v.latest());
         out.put("updateAvailable", v.updateAvailable());
         out.put("releaseUrl", v.releaseUrl());
+        // Asset metadata for the in-app "Download & install" flow. Null
+        // values are kept (rather than dropped) so the UI's typed model
+        // can distinguish "not yet checked" from "no asset for this OS".
+        out.put("assetUrl", v.assetUrl());
+        out.put("assetName", v.assetName());
+        out.put("assetSize", v.assetSize());
         return out;
     }
 }

@@ -38,8 +38,23 @@ public class UpdateChecker {
 
     private static final Logger logger = LoggerFactory.getLogger(UpdateChecker.class);
 
-    private static final String RELEASES_URL =
+    /** GitHub "latest release" endpoint — overridable for local end-to-end
+     *  testing of the self-update flow. Set either system property
+     *  {@code intellimailbox.update.releases-url} or env var
+     *  {@code INTELLIMAILBOX_RELEASES_URL} to a URL that returns the same
+     *  JSON shape (e.g. a static file served by {@code python -m http.server})
+     *  to exercise the Download → Install path without publishing a release. */
+    private static final String DEFAULT_RELEASES_URL =
             "https://api.github.com/repos/intelliswarm-ai/intelli-mailbox/releases/latest";
+    private static final String RELEASES_URL = resolveReleasesUrl();
+
+    private static String resolveReleasesUrl() {
+        String prop = System.getProperty("intellimailbox.update.releases-url");
+        if (prop != null && !prop.isBlank()) return prop.trim();
+        String env = System.getenv("INTELLIMAILBOX_RELEASES_URL");
+        if (env != null && !env.isBlank()) return env.trim();
+        return DEFAULT_RELEASES_URL;
+    }
 
     private final String currentVersion;
     private final HttpClient http = HttpClient.newBuilder()
@@ -74,6 +89,11 @@ public class UpdateChecker {
 
     @PostConstruct
     void start() {
+        if (!DEFAULT_RELEASES_URL.equals(RELEASES_URL)) {
+            // Loud log so this can never silently leak into a release — if you
+            // see this line in a user's app.log, the env override is set.
+            logger.warn("UpdateChecker: releases URL OVERRIDDEN to {} (test mode)", RELEASES_URL);
+        }
         // Short initial delay (used to be 30s to stay out of first-paint),
         // bumped down because the UI's update banner fetches /api/version
         // once at startup — if the GitHub poll hasn't fired by then the
@@ -89,7 +109,7 @@ public class UpdateChecker {
         if (v == null) {
             // Pre-first-poll — return what we know about the running app so
             // the UI can render at least the current version.
-            return new VersionInfo(currentVersion, currentVersion, false, null);
+            return new VersionInfo(currentVersion, currentVersion, false, null, null, null, 0L);
         }
         return v;
     }
@@ -113,8 +133,12 @@ public class UpdateChecker {
             String published = tag.startsWith("v") ? tag.substring(1) : tag;
             if (published.isBlank()) return;
             boolean newer = isNewer(published, currentVersion);
+            Asset asset = pickAssetForCurrentOs(root.path("assets"));
             VersionInfo info = new VersionInfo(currentVersion, published, newer,
-                    htmlUrl.isBlank() ? null : htmlUrl);
+                    htmlUrl.isBlank() ? null : htmlUrl,
+                    asset == null ? null : asset.url,
+                    asset == null ? null : asset.name,
+                    asset == null ? 0L : asset.size);
             latest.set(info);
             if (newer) {
                 logger.info("UpdateChecker: newer release available — {} > {} ({})",
@@ -124,6 +148,33 @@ public class UpdateChecker {
             logger.debug("UpdateChecker: poll failed ({})", t.toString());
         }
     }
+
+    /**
+     * Choose the GitHub release asset that matches the host OS so the in-app
+     * "Download & install" flow can fetch a directly installable file.
+     * Returns {@code null} if no matching asset is published — the UI then
+     * falls back to a plain "View release notes" link.
+     */
+    private static Asset pickAssetForCurrentOs(JsonNode assets) {
+        if (assets == null || !assets.isArray() || assets.isEmpty()) return null;
+        String os = System.getProperty("os.name", "").toLowerCase();
+        String wanted;
+        if (os.contains("win")) wanted = ".msi";
+        else if (os.contains("mac") || os.contains("darwin")) wanted = ".dmg";
+        else wanted = ".deb"; // best default for our Linux installer story
+        for (JsonNode a : assets) {
+            String name = a.path("name").asText("");
+            if (name.toLowerCase().endsWith(wanted)) {
+                return new Asset(
+                        a.path("browser_download_url").asText(""),
+                        name,
+                        a.path("size").asLong(0L));
+            }
+        }
+        return null;
+    }
+
+    private record Asset(String url, String name, long size) {}
 
     /** Compare semantic-ish versions ("0.1.3" vs "0.1.4"). Pure string segments,
      *  tolerant of pre-release suffixes ("0.1.4-rc1" → still treated as 0.1.4). */
@@ -153,5 +204,14 @@ public class UpdateChecker {
     }
 
     public record VersionInfo(String current, String latest,
-                               boolean updateAvailable, String releaseUrl) {}
+                               boolean updateAvailable, String releaseUrl,
+                               /** OS-matching installer asset URL on GitHub (MSI on Windows,
+                                *  DMG on macOS, DEB on Linux). Null when the release has no
+                                *  asset for the host OS. */
+                               String assetUrl,
+                               /** Filename for the asset, used as the on-disk download name. */
+                               String assetName,
+                               /** Asset size in bytes from GitHub's metadata, for the UI
+                                *  progress bar's denominator. 0 when unknown. */
+                               long assetSize) {}
 }
