@@ -9,7 +9,7 @@
     <artifactId>intelli-mailbox</artifactId>
     <!-- Version is the source of truth for the GitHub Release tag — bumping this
          on main triggers .github/workflows/release.yml to publish a new release. -->
-    <version>0.1.5</version>
+    <version>0.1.6</version>
     <packaging>jar</packaging>
 
     <name>Intelli-mailbox</name>
@@ -437,11 +437,12 @@
                                             pom 0.1.3  ->  appVersion 1.1.3
                                             pom 0.1.4  ->  appVersion 1.1.4
                                             pom 0.1.5  ->  appVersion 1.1.5
+                                            pom 0.1.6  ->  appVersion 1.1.6
                                          so users on macOS / Win / Linux can still read the same
                                          "what version is this?" off the filename. Once the pom
                                          hits 1.0.0+, drop this override and let project.version
                                          flow through. -->
-                                    <appVersion>1.1.5</appVersion>
+                                    <appVersion>1.1.6</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
                                     <description>Intelli Mailbox - AI-preprocessed inbox</description>
