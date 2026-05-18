@@ -30,16 +30,18 @@ import { UpdateState, UpdateStatus, VersionInfo, VersionService } from '../../co
         <span class="text">
           @switch (status().state) {
             @case ('DOWNLOADING') {
-              Downloading Intelli-mailbox <strong>{{ info()!.latest }}</strong> —
+              Downloading Intelli-mailbox <strong>{{ inFlightVersion() }}</strong> —
               <span class="pct">{{ percentLabel() }}</span>
             }
             @case ('READY') {
-              Intelli-mailbox <strong>{{ info()!.latest }}</strong> is ready to install.
-              The app will quit and relaunch automatically.
+              Intelli-mailbox <strong>{{ inFlightVersion() }}</strong> is ready to install.
+              The app will quit; reopen it from the Start menu after the
+              installer finishes.
             }
             @case ('INSTALLING') {
-              Installing Intelli-mailbox <strong>{{ info()!.latest }}</strong> —
-              the installer is taking over.
+              Installing Intelli-mailbox <strong>{{ inFlightVersion() }}</strong> —
+              the installer is taking over. Reopen the app from the Start menu
+              once it finishes.
             }
             @case ('FAILED') {
               Update failed: {{ status().error || 'unknown error' }}
@@ -155,6 +157,17 @@ export class UpdateBannerComponent implements OnInit, OnDestroy {
   });
   readonly percentLabel = computed(() => `${this.percent()} %`);
 
+  /** The version the backend is actually downloading / about to install,
+   *  not whatever the latest `/api/version` poll happens to report. This
+   *  matters when the mid-session 30-min version refresh fires between
+   *  "Download" and "Install" — without it, the banner could read
+   *  "0.1.6 is ready to install" while the .part file on disk is 0.1.5,
+   *  causing the Install button to launch a stale installer. Fall back to
+   *  info().latest only before the download starts (when targetVersion
+   *  is still null). */
+  readonly inFlightVersion = computed(() =>
+    this.status().targetVersion ?? this.info()?.latest ?? '');
+
   /** Backend defers its first GitHub poll a few seconds after boot. The UI's
    *  initial /api/version request can land before that poll completes,
    *  returning a placeholder "no update available". We re-check after a
@@ -208,10 +221,28 @@ export class UpdateBannerComponent implements OnInit, OnDestroy {
   install(): void {
     this.versionService.startInstall().subscribe({
       next: (s) => this.status.set(s),
-      error: () => {
-        // After install fires, the backend exits the JVM ~1s later and the
-        // next requests will fail. That's expected and not a real error.
-        this.status.set({ ...this.status(), state: 'INSTALLING' });
+      error: (err: any) => {
+        // Two failure modes look the same to RxJS but mean very different
+        // things:
+        //   status === 0 → the JVM exited before the response made it back
+        //                  (expected — happens on every successful install).
+        //   status >= 400 → the backend refused (e.g. 409 because the
+        //                  downloaded .part file is gone, or the state
+        //                  wasn't READY). The response body carries the
+        //                  real error.
+        // Treating both as INSTALLING (the old behaviour) would hide the
+        // 409 path and leave the user staring at an installer that never
+        // started.
+        if (err?.status === 0 || err?.status === undefined) {
+          this.status.set({ ...this.status(), state: 'INSTALLING' });
+          return;
+        }
+        const body = err?.error as Partial<UpdateStatus> | undefined;
+        this.status.set({
+          ...this.status(),
+          state: (body?.state as UpdateState) ?? 'FAILED',
+          error: body?.error ?? 'Could not launch the installer.',
+        });
       },
     });
   }

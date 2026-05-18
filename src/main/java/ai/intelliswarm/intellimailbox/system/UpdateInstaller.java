@@ -187,7 +187,19 @@ public class UpdateInstaller {
                     .header("User-Agent", "intelli-mailbox-updater")
                     .header("Range", "bytes=0-0")
                     .GET().build();
-            HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            // Crucially we use ofInputStream and immediately close the body
+                            // WITHOUT reading it. The probe only needs the response status
+            // and headers — if the server honors Range we get 206 + a 1-byte
+            // body (fine to discard), if it ignores Range it would otherwise
+            // stream the full 340 MB MSI into heap with ofByteArray, blowing
+            // past the packaged -Xmx1g long before we reached the "fall back
+            // to single-stream" decision. Closing the stream signals HttpClient
+            // to abort the response so no body bytes are buffered.
+            HttpResponse<InputStream> resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = resp.body()) {
+                // intentionally not reading — close immediately
+                if (body == null) { /* no-op */ }
+            }
             if (resp.statusCode() == 206) {
                 // 206 Partial Content: parse the total from "Content-Range: bytes 0-0/1234567".
                 long total = resp.headers().firstValue("Content-Range")
@@ -202,8 +214,8 @@ public class UpdateInstaller {
             }
             if (resp.statusCode() / 100 == 2) {
                 // Server ignored the Range header and returned the full body
-                // (or at least started to). Fall back to single-stream and
-                // trust Content-Length if it's there.
+                // (which we just closed without reading). Fall back to
+                // single-stream and trust Content-Length if it's there.
                 long len = resp.headers().firstValue("Content-Length")
                         .map(Long::parseLong).orElse(0L);
                 return new AssetMetadata(len, false);
@@ -322,8 +334,20 @@ public class UpdateInstaller {
                         .header("Range", "bytes=" + start + "-" + end)
                         .GET().build();
                 HttpResponse<InputStream> resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream());
-                if (resp.statusCode() != 206 && resp.statusCode() != 200) {
-                    throw new IOException("HTTP " + resp.statusCode() + " on chunk " + start + "-" + end);
+                // Must be 206. A 200 here means the server (or an intermediate
+                // proxy/CDN) silently ignored our Range header and is about to
+                // stream the FULL installer to a single chunk worker — which
+                // would write the entire file starting at this chunk's offset,
+                // clobbering every other chunk's range and producing a
+                // corrupted .part file that would still get moved to READY.
+                // Refuse and let the chunk retry; if all attempts fail, the
+                // download surfaces as FAILED instead of installing a broken
+                // MSI. (We close the body immediately to abort the unwanted
+                // full-body transfer.)
+                if (resp.statusCode() != 206) {
+                    try { resp.body().close(); } catch (IOException ignored) { }
+                    throw new IOException("Expected HTTP 206 on chunk " + start + "-" + end
+                            + " but got " + resp.statusCode() + " (server stopped honoring Range)");
                 }
                 long pos = start;
                 try (InputStream in = resp.body()) {
