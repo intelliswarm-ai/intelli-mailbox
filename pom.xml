@@ -9,7 +9,7 @@
     <artifactId>intelli-mailbox</artifactId>
     <!-- Version is the source of truth for the GitHub Release tag — bumping this
          on main triggers .github/workflows/release.yml to publish a new release. -->
-    <version>0.1.4</version>
+    <version>0.1.5</version>
     <packaging>jar</packaging>
 
     <name>Intelli-mailbox</name>
@@ -184,6 +184,33 @@
                     <parameters>true</parameters>
                 </configuration>
             </plugin>
+            <!-- Pin Surefire to a 3.x line so JUnit 5 (Jupiter) tests are
+                 discovered. Maven's built-in surefire is 2.12.4 which only
+                 understands JUnit 4 — without this override the new
+                 UpdateControllerTest reports "0 tests run" silently. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
+            <!-- Stamp Implementation-Version (and friends) into the jar's
+                 MANIFEST.MF so UpdateChecker can read the running version via
+                 Package.getImplementationVersion(). Without this the manifest
+                 only carries Spring Boot launcher metadata, the lookup returns
+                 null, and the in-app banner reports "you have dev" even on a
+                 tagged MSI/DMG/DEB install. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -317,6 +344,23 @@
                                          page so users can find docs, releases, and the framework. -->
                                     <winHelpUrl>https://intelliswarm.ai/products/intelli-mailbox</winHelpUrl>
                                     <winUpdateUrl>https://intelliswarm.ai/products/intelli-mailbox</winUpdateUrl>
+                                    <!-- STABLE UpgradeCode for the entire Intelli Mailbox
+                                         product family. Windows uses this GUID (NOT the
+                                         per-version ProductCode) to recognise "this MSI is
+                                         a newer/older edition of an existing install" and
+                                         route to the major-upgrade flow — silently removes
+                                         the old version and installs the new one in one
+                                         step. Without it, jpackage generates a fresh UUID
+                                         per build and consecutive versions look like
+                                         unrelated products to Windows, which then installs
+                                         them side-by-side instead of upgrading.
+
+                                         DO NOT REGENERATE. Changing this string after a
+                                         public release breaks the upgrade path for every
+                                         existing user — their installed copy stays put and
+                                         the new MSI installs alongside as a separate
+                                         product. -->
+                                    <winUpgradeUuid>4c6a3b7e-2d1f-4859-8b2c-9e5f3a1b6c2d</winUpgradeUuid>
                                     <!-- CRITICAL: explicit module list for jlink.
                                          Without this, jpackage tries to auto-detect modules
                                          via jdeps on the fat-jar — jdeps can't see inside
@@ -392,11 +436,12 @@
                                             pom 0.1.2  ->  appVersion 1.1.2
                                             pom 0.1.3  ->  appVersion 1.1.3
                                             pom 0.1.4  ->  appVersion 1.1.4
+                                            pom 0.1.5  ->  appVersion 1.1.5
                                          so users on macOS / Win / Linux can still read the same
                                          "what version is this?" off the filename. Once the pom
                                          hits 1.0.0+, drop this override and let project.version
                                          flow through. -->
-                                    <appVersion>1.1.4</appVersion>
+                                    <appVersion>1.1.5</appVersion>
                                     <vendor>IntelliSwarm.AI</vendor>
                                     <copyright>Copyright (c) 2026 IntelliSwarm.AI</copyright>
                                     <description>Intelli Mailbox - AI-preprocessed inbox</description>

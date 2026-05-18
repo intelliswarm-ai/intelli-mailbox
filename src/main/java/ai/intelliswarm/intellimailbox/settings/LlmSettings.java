@@ -32,10 +32,12 @@ public record LlmSettings(
          * When {@code true}, the app lowers Ollama's process priority on
          * startup (and launches it with low priority when started via the
          * "Start Ollama for me" autofix). Trades enrichment throughput for
-         * foreground responsiveness on low-end laptops — recommended for
-         * machines with 4-core CPUs or 8 GB RAM where Ollama otherwise
-         * makes Chrome / the OS unusable while a model is generating.
-         * Off by default to preserve the existing performance baseline.
+         * foreground responsiveness — Chrome and the rest of the OS stay
+         * usable while a model is generating, at the cost of slower
+         * per-email enrichment. On by default (issue #12) because the
+         * typical desktop user is much more sensitive to a frozen Chrome
+         * than to a 20–40% slower background pipeline; power users on a
+         * dedicated workstation can flip it off in Settings.
          */
         boolean ollamaBackgroundPriority
 ) {
@@ -50,7 +52,7 @@ public record LlmSettings(
                 ProviderCatalog.emptyConfigs(),
                 "auto",
                 false,
-                false
+                true
         );
     }
 

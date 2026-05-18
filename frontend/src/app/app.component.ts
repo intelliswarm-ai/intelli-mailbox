@@ -40,8 +40,10 @@ import { EmailOpenerService } from './core/email-opener.service';
             class="chat-fab"
             (click)="toggleChat()"
             [class.active]="chatOpen()"
+            [attr.aria-label]="chatOpen() ? 'Close chat' : 'Open chat with your inbox'"
             title="Chat with your inbox (c)">
-      💬
+      <span class="chat-fab__icon" aria-hidden="true">💬</span>
+      <span class="chat-fab__label">Chat</span>
     </button>
 
     @if (chatOpen()) {
@@ -152,20 +154,27 @@ import { EmailOpenerService } from './core/email-opener.service';
       position: fixed;
       bottom: 22px;
       right: 22px;
-      width: 52px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       height: 52px;
-      border-radius: 50%;
+      padding: 0 20px 0 16px;
+      border-radius: 26px;
       border: none;
       background: var(--gradient-brand);
       color: #ffffff;
-      font-size: 1.4rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
       cursor: pointer;
       box-shadow: 0 6px 22px rgba(0, 0, 0, 0.30);
       transition: transform 0.15s ease, box-shadow 0.15s ease;
       z-index: 55;
     }
-    .chat-fab:hover { transform: scale(1.06); }
-    .chat-fab.active { transform: scale(0.95); }
+    .chat-fab__icon { font-size: 1.25rem; line-height: 1; }
+    .chat-fab__label { line-height: 1; }
+    .chat-fab:hover { transform: scale(1.04); }
+    .chat-fab.active { transform: scale(0.96); }
   `],
 })
 export class AppComponent implements OnInit {
